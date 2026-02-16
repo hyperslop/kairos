@@ -8,8 +8,23 @@ renderer/
 *.exe
 *.dmg
 
-# Android build artifacts
-packages/android/android/
+# Android - ignore all generated Capacitor files
+packages/android/android/*
+
+# But keep the files we've customized
+!packages/android/android/app/
+packages/android/android/app/*
+!packages/android/android/app/src/
+packages/android/android/app/src/*
+!packages/android/android/app/src/main/
+packages/android/android/app/src/main/*
+!packages/android/android/app/src/main/AndroidManifest.xml
+!packages/android/android/app/src/main/res/
+packages/android/android/app/src/main/res/*
+!packages/android/android/app/src/main/res/xml/
+packages/android/android/app/src/main/res/xml/*
+!packages/android/android/app/src/main/res/xml/network_security_config.xml
+
 packages/android/.gradle/
 
 # Vite
