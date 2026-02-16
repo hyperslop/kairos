@@ -1,0 +1,22 @@
+{
+  "name": "task-manager-android",
+  "version": "1.0.0",
+  "description": "Task Manager — Android App (Capacitor)",
+  "scripts": {
+    "build:web": "cd ../core && npx vite build",
+    "cap:init": "npx cap init 'Task Manager' com.taskmanager.app --web-dir ../core/dist",
+    "cap:add": "npx cap add android",
+    "cap:sync": "npm run build:web && npx cap sync android",
+    "cap:open": "npx cap open android",
+    "cap:run": "npx cap run android",
+    "build": "npm run build:web && npx cap sync android"
+  },
+  "dependencies": {
+    "@capacitor/android": "^7.0.0",
+    "@capacitor/core": "^7.0.0",
+    "@capacitor/local-notifications": "^7.0.0"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^7.0.0"
+  }
+}

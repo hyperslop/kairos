@@ -1,0 +1,55 @@
+{
+  "name": "task-manager-desktop",
+  "version": "1.0.0",
+  "description": "Task Manager — Desktop App",
+  "main": "main.js",
+  "scripts": {
+    "dev": "NODE_ENV=development electron .",
+    "build:renderer": "cd ../core && npx vite build --outDir ../electron/renderer --emptyOutDir",
+    "build:linux": "npm run build:renderer && electron-builder --linux",
+    "build:appimage": "npm run build:renderer && electron-builder --linux AppImage",
+    "build:flatpak": "npm run build:renderer && electron-builder --linux flatpak",
+    "build:win": "npm run build:renderer && electron-builder --win",
+    "build:mac": "npm run build:renderer && electron-builder --mac"
+  },
+  "build": {
+    "appId": "com.taskmanager.desktop",
+    "productName": "Task Manager",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "renderer/**/*",
+      "assets/**/*"
+    ],
+    "linux": {
+      "target": [
+        "flatpak"
+      ],
+      "category": "Office",
+      "icon": "assets/icon.png",
+      "maintainer": "Task Manager"
+    },
+    "flatpak": {
+      "runtime": "org.freedesktop.Platform",
+      "runtimeVersion": "24.08",
+      "sdk": "org.freedesktop.Sdk",
+      "base": "org.electronjs.Electron2.BaseApp",
+      "baseVersion": "24.08"
+    },
+    "win": {
+      "target": "nsis",
+      "icon": "assets/icon.png"
+    },
+    "mac": {
+      "target": "dmg",
+      "icon": "assets/icon.png"
+    }
+  },
+  "devDependencies": {
+    "electron": "^33.2.0",
+    "electron-builder": "^25.1.8"
+  }
+}

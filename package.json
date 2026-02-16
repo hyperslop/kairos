@@ -1,0 +1,23 @@
+{
+  "name": "task-manager-multiplatform",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Task Manager — Shared core with Electron desktop and Capacitor Android builds",
+  "scripts": {
+    "install:core": "cd packages/core && npm install",
+    "install:electron": "cd packages/electron && npm install",
+    "install:android": "cd packages/android && npm install",
+    "install:server": "cd packages/server && npm install",
+    "install:all": "npm run install:core && npm run install:electron && npm run install:android && npm run install:server",
+
+    "dev:web": "cd packages/core && npm run dev",
+    "dev:electron": "cd packages/core && npm run dev & sleep 3 && cd packages/electron && npm run dev",
+    "dev:server": "cd packages/server && SYNC_PASSWORD=changeme npm run dev",
+    "start:server": "cd packages/server && npm start",
+
+    "build:electron:linux": "cd packages/electron && npm run build:linux",
+    "build:electron:appimage": "cd packages/electron && npm run build:appimage",
+    "build:electron:flatpak": "cd packages/electron && npm run build:flatpak",
+    "build:android": "cd packages/android && npm run build"
+  }
+}
