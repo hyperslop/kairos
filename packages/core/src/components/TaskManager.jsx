@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { Trash2 } from 'lucide-react';
 import DashboardView from './DashboardView';
 import UndatedView from './UndatedView';
 import TaskCreationView from './TaskCreationView';
@@ -32,6 +33,7 @@ const TaskManager = () => {
   const [deleteRecurringModal, setDeleteRecurringModal] = useState(null);
   const [sessionCreatedIds, setSessionCreatedIds] = useState([]);
   const [taskSubView, setTaskSubView] = useState('single');
+  const [editingRecentTaskId, setEditingRecentTaskId] = useState(null);
   const [overclock, setOverclock] = useState(() => {
     const saved = localStorage.getItem('taskManagerOverclock');
     return saved === 'true';
@@ -470,6 +472,89 @@ const TaskManager = () => {
     }
   };
 
+  const saveRecentTask = () => {
+    if (!editingRecentTaskId || !newTask.name.trim()) return;
+    let timeStr = '';
+    if (newTask.hour !== null) {
+      let hour = newTask.hour;
+      let minute = (newTask.baseMinute !== null ? newTask.baseMinute : 0) + newTask.minuteOffset;
+      if (newTask.ampm && hour <= 12) {
+        if (newTask.ampm === 'PM' && hour < 12) hour += 12;
+        if (newTask.ampm === 'AM' && hour === 12) hour = 0;
+      }
+      if (hour === 24) hour = 0;
+      if (minute >= 60) {
+        hour = (hour + Math.floor(minute / 60)) % 24;
+        minute = minute % 60;
+      }
+      timeStr = `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
+    }
+    updateTask(editingRecentTaskId, {
+      ...newTask,
+      time: timeStr,
+      isRecurringRoot: newTask.recurring,
+      baseMinute: undefined,
+      minuteOffset: undefined,
+      dateWasManuallySet: undefined,
+      timeScheduled: newTask.date ? newTask.date : null,
+    });
+    resetTaskForm();
+  };
+
+  const loadRecentTaskForEditing = (task) => {
+    // Parse the stored time string (HH:MM) back into hour/minute/ampm form
+    let hour = 12;
+    let baseMinute = null;
+    let minuteOffset = 0;
+    let ampm = null;
+    if (task.time) {
+      const parts = task.time.split(':');
+      hour = parseInt(parts[0]);
+      const totalMinute = parseInt(parts[1]);
+      baseMinute = Math.floor(totalMinute / 5) * 5;
+      if (baseMinute === 0) baseMinute = 60;
+      minuteOffset = totalMinute - (baseMinute === 60 ? 0 : baseMinute);
+      if (!overclock) {
+        if (hour === 0) {
+          hour = 12;
+          ampm = 'AM';
+        } else if (hour >= 12) {
+          ampm = 'PM';
+          if (hour > 12) hour -= 12;
+        } else {
+          ampm = 'AM';
+        }
+      }
+    }
+    setNewTask({
+      name: task.name || '',
+      description: task.description || '',
+      project: task.project || 'Personal',
+      date: task.date || '',
+      endDate: task.endDate || '',
+      time: task.time || '',
+      hour,
+      baseMinute,
+      minuteOffset,
+      ampm,
+      completed: task.completed || false,
+      predecessors: task.predecessors || [],
+      successors: task.successors || [],
+      carryOver: task.carryOver || false,
+      urgent: task.urgent || false,
+      recurring: task.recurring || false,
+      isRecurringRoot: task.isRecurringRoot || false,
+      recurringRootId: task.recurringRootId || null,
+      recurrencePattern: task.recurrencePattern || null,
+      dateWasManuallySet: !!task.date
+    });
+    setDateInput(task.date ? task.date.replace(/-/g, '') : '');
+    setTimeInput(task.time || '');
+    setClockMode('hour');
+    setEditingRecentTaskId(task.id);
+    setTaskSubView('single');
+  };
+
   const addBatchTasks = (goBack = false) => {
     const now = new Date().toISOString();
     const newTasks = batchRows
@@ -546,6 +631,7 @@ const TaskManager = () => {
     setTimeInput('');
     setTaskCreationMonth(new Date());
     setClockMode('hour');
+    setEditingRecentTaskId(null);
   };
 
   const navigateToNewTask = () => {
@@ -1373,14 +1459,18 @@ const TaskManager = () => {
         ) : (
           recentTasks.map(task => {
             const isSessionTask = sessionCreatedIds.includes(task.id);
+            const isBeingEdited = editingRecentTaskId === task.id;
             return (
               <div
                 key={task.id}
-                className={`flex items-center justify-between px-2 py-1.5 text-xs font-mono border ${
-                  isSessionTask
-                    ? 'bg-green-950 border-green-800 text-green-200'
-                    : 'bg-gray-900 border-gray-700 text-gray-300'
+                className={`flex items-center justify-between px-2 py-1.5 text-xs font-mono border cursor-pointer ${
+                  isBeingEdited
+                    ? 'bg-blue-950 border-blue-600 text-blue-200'
+                    : isSessionTask
+                      ? 'bg-green-950 border-green-800 text-green-200 hover:bg-green-900'
+                      : 'bg-gray-900 border-gray-700 text-gray-300 hover:bg-gray-800'
                 }`}
+                onClick={() => loadRecentTaskForEditing(task)}
               >
                 <div className="flex items-center gap-2 flex-1 min-w-0">
                   <span className={`truncate ${task.completed ? 'line-through text-gray-600' : ''}`}>
@@ -1392,6 +1482,12 @@ const TaskManager = () => {
                   <span className="text-gray-500">{task.date || 'undated'}</span>
                   {task.time && <span className="text-gray-500">{task.time}</span>}
                   {task.timeCreated && <span className="text-gray-600">{formatTimeShort(task.timeCreated)}</span>}
+                  <button
+                    onClick={(e) => { e.stopPropagation(); deleteTask(task.id); }}
+                    className="text-red-500 hover:text-red-400 p-0.5"
+                  >
+                    <Trash2 size={14} />
+                  </button>
                 </div>
               </div>
             );
@@ -1404,20 +1500,23 @@ const TaskManager = () => {
   // Render action buttons
   const renderActionButtons = (createFn) => (
     <div className="flex gap-2 pt-2">
+      {editingRecentTaskId ? (
+        <button
+          onClick={saveRecentTask}
+          className="flex-1 bg-green-700 border border-green-600 text-white px-4 py-2 font-mono hover:bg-green-600 text-sm"
+        >
+          SAVE
+        </button>
+      ) : (
+        <button
+          onClick={() => createFn(false)}
+          className="flex-1 bg-green-700 border border-green-600 text-white px-4 py-2 font-mono hover:bg-green-600 text-sm"
+        >
+          CREATE
+        </button>
+      )}
       <button
-        onClick={() => createFn(false)}
-        className="flex-1 bg-green-700 border border-green-600 text-white px-4 py-2 font-mono hover:bg-green-600 text-sm"
-      >
-        CREATE
-      </button>
-      <button
-        onClick={() => createFn(true)}
-        className="flex-1 bg-blue-700 border border-blue-600 text-white px-4 py-2 font-mono hover:bg-blue-600 text-sm"
-      >
-        CREATE + BACK
-      </button>
-      <button
-        onClick={goBackFromNewTask}
+        onClick={editingRecentTaskId ? () => resetTaskForm() : goBackFromNewTask}
         className="flex-1 bg-gray-700 border border-gray-600 text-gray-300 px-4 py-2 font-mono hover:bg-gray-600 text-sm"
       >
         CANCEL
