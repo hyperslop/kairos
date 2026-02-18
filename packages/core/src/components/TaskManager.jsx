@@ -1202,12 +1202,18 @@ const TaskManager = () => {
         updates.date = getLocalDateString(new Date());
         updates.dateWasManuallySet = false;
       }
+      // Also enable recurring with default pattern
+      updates.recurring = true;
+      const taskDate = newTask.date ? new Date(newTask.date + 'T00:00:00') : new Date();
+      updates.recurrencePattern = { frequency: 'daily', interval: 1, daysOfWeek: [taskDate.getDay()], count: 'infinite' };
     } else {
-      if (!newTask.recurring) {
-        updates.endDate = '';
-      }
-      if (!newTask.dateWasManuallySet && !newTask.recurring && !newTask.urgent) {
+      // Also turn off recurring
+      updates.recurring = false;
+      updates.recurrencePattern = null;
+      if (!newTask.dateWasManuallySet && !newTask.urgent) {
         updates.date = '';
+        updates.endDate = '';
+      } else {
         updates.endDate = '';
       }
     }

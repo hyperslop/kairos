@@ -304,7 +304,7 @@ const TaskItem = ({
 
         {task.urgent && <span className="text-red-500 text-xs font-mono flex-shrink-0">[!]</span>}
         {task.carryOver && <span className="text-yellow-500 text-xs font-mono flex-shrink-0">[C]</span>}
-        {(task.recurring || task.recurringRootId || task._isRecurringInstance) && <span className="text-purple-500 text-xs font-mono flex-shrink-0">[R]</span>}
+        {!task.carryOver && (task.recurring || task.recurringRootId || task._isRecurringInstance) && <span className="text-purple-500 text-xs font-mono flex-shrink-0">[R]</span>}
 
         {showDate && task.date && (
           <span className="text-xs font-mono text-gray-500 flex-shrink-0">
