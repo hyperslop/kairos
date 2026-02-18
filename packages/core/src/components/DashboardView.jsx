@@ -24,7 +24,8 @@ const DashboardView = ({
   editingTask,
   startEditTask,
   saveEditTask,
-  setEditingTask
+  setEditingTask,
+  advancedEditTask
 }) => {
   return (
     <div className="border border-gray-700 bg-gray-800 p-2 md:p-4">
@@ -119,7 +120,7 @@ const DashboardView = ({
               <p className="text-gray-500 font-mono text-sm">// no tasks scheduled</p>
             ) : (
               getTasksForDate(selectedDate).map((task, idx) => (
-                <TaskItem key={task.id} task={task} tasks={tasks} projects={projects} toggleTask={toggleTask} deleteTask={deleteTask} addDependency={addDependency} removeDependency={removeDependency} updateTask={updateTask} editingTask={editingTask} startEditTask={startEditTask} saveEditTask={saveEditTask} setEditingTask={setEditingTask} showDate={false} index={idx} />
+                <TaskItem key={task.id} task={task} tasks={tasks} projects={projects} toggleTask={toggleTask} deleteTask={deleteTask} addDependency={addDependency} removeDependency={removeDependency} updateTask={updateTask} editingTask={editingTask} startEditTask={startEditTask} saveEditTask={saveEditTask} setEditingTask={setEditingTask} advancedEditTask={advancedEditTask} showDate={false} index={idx} />
               ))
             )}
           </div>

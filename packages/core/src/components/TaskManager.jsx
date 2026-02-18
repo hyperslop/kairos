@@ -555,6 +555,13 @@ const TaskManager = () => {
     setTaskSubView('single');
   };
 
+  const advancedEditTask = (task) => {
+    const { _timeInput, ...cleanTask } = task;
+    loadRecentTaskForEditing(cleanTask);
+    setPreviousView(selectedView);
+    setSelectedView('newTask');
+  };
+
   const addBatchTasks = (goBack = false) => {
     const now = new Date().toISOString();
     const newTasks = batchRows
@@ -656,7 +663,8 @@ const TaskManager = () => {
 
   const saveEditTask = () => {
     if (editingTask) {
-      updateTask(editingTask.id, editingTask);
+      const { _timeInput, ...taskData } = editingTask;
+      updateTask(editingTask.id, taskData);
       setEditingTask(null);
     }
   };
@@ -1687,6 +1695,7 @@ const TaskManager = () => {
             startEditTask={startEditTask}
             saveEditTask={saveEditTask}
             setEditingTask={setEditingTask}
+            advancedEditTask={advancedEditTask}
           />
         )}
 
@@ -1715,6 +1724,7 @@ const TaskManager = () => {
             startEditTask={startEditTask}
             saveEditTask={saveEditTask}
             setEditingTask={setEditingTask}
+            advancedEditTask={advancedEditTask}
           />
         )}
 

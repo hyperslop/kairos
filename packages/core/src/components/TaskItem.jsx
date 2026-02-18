@@ -214,19 +214,40 @@ const DependencyPicker = ({ tasks, projects, currentTask, type, onAdd, onCancel 
   );
 };
 
-const TaskItem = ({ 
-  task, 
-  tasks, 
+const parseTimeInput = (input) => {
+  const s = input.trim().toLowerCase();
+  if (!s) return '';
+  // Match patterns: 9:00, 9:00am, 9:00pm, 900, 900am, 900pm, 17:00
+  const m = s.match(/^(\d{1,2}):?(\d{2})\s*(am|pm)?$/);
+  if (!m) return null;
+  let hour = parseInt(m[1]);
+  const minute = parseInt(m[2]);
+  const ampm = m[3];
+  if (minute >= 60) return null;
+  if (ampm) {
+    if (hour < 1 || hour > 12) return null;
+    if (ampm === 'pm' && hour < 12) hour += 12;
+    if (ampm === 'am' && hour === 12) hour = 0;
+  } else {
+    if (hour > 23) return null;
+  }
+  return `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
+};
+
+const TaskItem = ({
+  task,
+  tasks,
   projects,
-  toggleTask, 
-  deleteTask, 
-  addDependency, 
-  removeDependency, 
-  updateTask, 
-  editingTask, 
-  startEditTask, 
-  saveEditTask, 
-  setEditingTask, 
+  toggleTask,
+  deleteTask,
+  addDependency,
+  removeDependency,
+  updateTask,
+  editingTask,
+  startEditTask,
+  saveEditTask,
+  setEditingTask,
+  advancedEditTask,
   showDate = true,
   index = 0
 }) => {
@@ -255,13 +276,23 @@ const TaskItem = ({
     return (
       <div className={`border border-gray-700 bg-gray-900 p-3 border-l-2 ${getTypeColor()}`}>
         <div className="space-y-2">
-          <input
-            type="text"
-            value={editingTask.name}
-            onChange={(e) => setEditingTask({ ...editingTask, name: e.target.value })}
-            className="w-full border border-gray-600 bg-gray-800 text-white px-2 py-1 font-mono text-sm"
-            placeholder="task name"
-          />
+          <div className="flex gap-2">
+            <input
+              type="text"
+              value={editingTask.name}
+              onChange={(e) => setEditingTask({ ...editingTask, name: e.target.value })}
+              className="flex-1 border border-gray-600 bg-gray-800 text-white px-2 py-1 font-mono text-sm min-w-0"
+              placeholder="task name"
+            />
+            {advancedEditTask && (
+              <button
+                onClick={() => { setEditingTask(null); advancedEditTask(editingTask); }}
+                className="flex-shrink-0 bg-gray-800 border border-gray-600 text-gray-300 px-2 py-1 font-mono text-xs hover:bg-gray-700"
+              >
+                ADVANCED
+              </button>
+            )}
+          </div>
           <textarea
             value={editingTask.description}
             onChange={(e) => setEditingTask({ ...editingTask, description: e.target.value })}
@@ -274,6 +305,21 @@ const TaskItem = ({
             value={editingTask.date}
             onChange={(e) => setEditingTask({ ...editingTask, date: e.target.value })}
             className="w-full border border-gray-600 bg-gray-800 text-white px-2 py-1 font-mono text-sm"
+          />
+          <input
+            type="text"
+            value={editingTask._timeInput != null ? editingTask._timeInput : editingTask.time || ''}
+            onChange={(e) => setEditingTask({ ...editingTask, _timeInput: e.target.value })}
+            onBlur={() => {
+              if (editingTask._timeInput != null) {
+                const parsed = parseTimeInput(editingTask._timeInput);
+                if (parsed !== null) {
+                  setEditingTask({ ...editingTask, time: parsed, _timeInput: undefined });
+                }
+              }
+            }}
+            className="w-full border border-gray-600 bg-gray-800 text-white px-2 py-1 font-mono text-sm"
+            placeholder="time (e.g. 9:00, 900pm, 17:00)"
           />
           <div className="flex gap-2">
             <button

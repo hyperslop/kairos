@@ -24,7 +24,8 @@ const UndatedView = ({
   editingTask,
   startEditTask,
   saveEditTask,
-  setEditingTask
+  setEditingTask,
+  advancedEditTask
 }) => {
   return (
     <div className="border border-gray-700 bg-gray-800 p-2 md:p-4">
@@ -70,7 +71,7 @@ const UndatedView = ({
                     <p className="text-gray-500 font-mono text-sm">// no undated tasks</p>
                   ) : (
                     projectTasks.map((task, idx) => (
-                      <TaskItem key={task.id} task={task} tasks={tasks} projects={projects} toggleTask={toggleTask} deleteTask={deleteTask} addDependency={addDependency} removeDependency={removeDependency} updateTask={updateTask} editingTask={editingTask} startEditTask={startEditTask} saveEditTask={saveEditTask} setEditingTask={setEditingTask} showDate={true} index={idx} />
+                      <TaskItem key={task.id} task={task} tasks={tasks} projects={projects} toggleTask={toggleTask} deleteTask={deleteTask} addDependency={addDependency} removeDependency={removeDependency} updateTask={updateTask} editingTask={editingTask} startEditTask={startEditTask} saveEditTask={saveEditTask} setEditingTask={setEditingTask} advancedEditTask={advancedEditTask} showDate={true} index={idx} />
                     ))
                   )}
                 </div>
