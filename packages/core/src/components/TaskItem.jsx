@@ -276,6 +276,42 @@ const TaskItem = ({
             className="w-full border border-gray-600 bg-gray-800 text-white px-2 py-1 font-mono text-sm"
           />
           <div className="flex gap-2">
+            <button
+              onClick={() => setEditingTask({ ...editingTask, urgent: !editingTask.urgent })}
+              className={`flex-1 border px-3 py-1 font-mono text-sm ${
+                editingTask.urgent ? 'bg-red-600 border-red-500 text-white' : 'bg-gray-800 border-gray-700 text-gray-300 hover:bg-gray-700'
+              }`}
+            >
+              URGENT
+            </button>
+            <button
+              onClick={() => {
+                const newVal = !editingTask.carryOver;
+                if (newVal) {
+                  const taskDate = editingTask.date ? new Date(editingTask.date + 'T00:00:00') : new Date();
+                  setEditingTask({
+                    ...editingTask,
+                    carryOver: true,
+                    recurring: true,
+                    recurrencePattern: { frequency: 'daily', interval: 1, daysOfWeek: [taskDate.getDay()], count: 'infinite' },
+                  });
+                } else {
+                  setEditingTask({
+                    ...editingTask,
+                    carryOver: false,
+                    recurring: false,
+                    recurrencePattern: null,
+                  });
+                }
+              }}
+              className={`flex-1 border px-3 py-1 font-mono text-sm ${
+                editingTask.carryOver ? 'bg-yellow-600 border-yellow-500 text-white' : 'bg-gray-800 border-gray-700 text-gray-300 hover:bg-gray-700'
+              }`}
+            >
+              CARRY OVER
+            </button>
+          </div>
+          <div className="flex gap-2">
             <button onClick={saveEditTask} className="flex-1 bg-green-700 border border-green-600 text-white px-3 py-1 font-mono text-sm hover:bg-green-600">SAVE</button>
             <button onClick={() => setEditingTask(null)} className="flex-1 bg-gray-700 border border-gray-600 text-gray-300 px-3 py-1 font-mono text-sm hover:bg-gray-600">CANCEL</button>
           </div>
