@@ -909,7 +909,7 @@ const TaskManager = () => {
   };
 
   const getTasksForDate = (date) => {
-    const dateStr = date.toISOString().split('T')[0];
+    const dateStr = getLocalDateString(date);
     const checkDate = new Date(dateStr + 'T00:00:00');
     const result = [];
 
@@ -1129,7 +1129,7 @@ const TaskManager = () => {
 
   const isSameDate = (date1, date2) => {
     if (!date1 || !date2) return false;
-    return date1.toISOString().split('T')[0] === date2.toISOString().split('T')[0];
+    return getLocalDateString(date1) === getLocalDateString(date2);
   };
 
   const nextMonth = () => setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 1));
