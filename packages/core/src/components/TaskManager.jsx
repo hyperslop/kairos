@@ -42,6 +42,10 @@ const TaskManager = () => {
     const saved = localStorage.getItem('taskManagerOverclockLocked');
     return saved === 'true';
   });
+  const [deletedTaskIds, setDeletedTaskIds] = useState(() => {
+    const saved = localStorage.getItem('taskManagerDeletedTaskIds');
+    return saved ? JSON.parse(saved) : [];
+  });
   const [clockMode, setClockMode] = useState('hour');
 
   const [batchRows, setBatchRows] = useState([{ id: Date.now(), name: '', description: '', date: '', time: '', project: 'Personal' }]);
@@ -93,6 +97,10 @@ const TaskManager = () => {
     localStorage.setItem('taskManagerOverclockLocked', String(overclockLocked));
   }, [overclockLocked]);
 
+  useEffect(() => {
+    localStorage.setItem('taskManagerDeletedTaskIds', JSON.stringify(deletedTaskIds));
+  }, [deletedTaskIds]);
+
   // ========== NOTIFICATION SCHEDULING ==========
   useEffect(() => {
     requestNotificationPermission().then(granted => {
@@ -108,7 +116,7 @@ const TaskManager = () => {
   }, [tasks]);
 
   // ========== EXPORT / IMPORT ==========
-  const exportTasksJSON = () => {
+  const exportTasksJSON = async () => {
     const exportData = {
       version: 1,
       exportedAt: new Date().toISOString(),
@@ -116,11 +124,27 @@ const TaskManager = () => {
       projects,
       settings: { overclock, overclockLocked }
     };
+    const fileName = `tasks-backup-${new Date().toISOString().split('T')[0]}.json`;
     const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
+
+    // Try native share (works in Android WebView)
+    if (navigator.share) {
+      try {
+        const file = new File([blob], fileName, { type: 'application/json' });
+        if (navigator.canShare && navigator.canShare({ files: [file] })) {
+          await navigator.share({ files: [file], title: 'Kairos Backup' });
+          return;
+        }
+      } catch (err) {
+        if (err.name === 'AbortError') return; // user cancelled
+      }
+    }
+
+    // Fallback: <a download> (works on desktop browsers)
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `tasks-backup-${new Date().toISOString().split('T')[0]}.json`;
+    a.download = fileName;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -171,24 +195,87 @@ const TaskManager = () => {
   const [importExportMsg, setImportExportMsg] = useState('');
 
   // ========== SYNC ==========
-  const handleSyncPull = useCallback((data) => {
-    if (data.tasks && Array.isArray(data.tasks)) {
-      const sanitized = data.tasks.map(t => ({
-        ...t,
-        predecessors: t.predecessors || [],
-        successors: t.successors || [],
-        completedDates: t.completedDates || [],
-        excludedDates: t.excludedDates || []
-      }));
-      setTasks(sanitized);
+  const handleSyncMerge = useCallback((serverData) => {
+    const serverTasks = (serverData.tasks || []).map(t => ({
+      ...t,
+      predecessors: t.predecessors || [],
+      successors: t.successors || [],
+      completedDates: t.completedDates || [],
+      excludedDates: t.excludedDates || []
+    }));
+    const serverProjects = serverData.projects || [];
+    const serverSettings = serverData.settings || {};
+    const serverTombstones = serverData.deletedTaskIds || [];
+
+    // Read current local state via setter callbacks to get latest values
+    let localTasks, localProjects, localOc, localOcLocked, localTombstones;
+    setTasks(prev => { localTasks = prev; return prev; });
+    setProjects(prev => { localProjects = prev; return prev; });
+    setOverclock(prev => { localOc = prev; return prev; });
+    setOverclockLocked(prev => { localOcLocked = prev; return prev; });
+    setDeletedTaskIds(prev => { localTombstones = prev; return prev; });
+
+    // Build deleted ID sets from both sides
+    const deletedIds = new Set([
+      ...localTombstones.map(t => t.id),
+      ...serverTombstones.map(t => t.id)
+    ]);
+
+    // Build task maps by ID
+    const localMap = new Map(localTasks.map(t => [t.id, t]));
+    const serverMap = new Map(serverTasks.map(t => [t.id, t]));
+    const allIds = new Set([...localMap.keys(), ...serverMap.keys()]);
+
+    // Merge tasks
+    const mergedTasks = [];
+    for (const id of allIds) {
+      if (deletedIds.has(id)) continue;
+      const local = localMap.get(id);
+      const server = serverMap.get(id);
+      if (local && !server) {
+        mergedTasks.push(local);
+      } else if (server && !local) {
+        mergedTasks.push(server);
+      } else {
+        // Both exist — keep the one with newer lastModified (fallback to timeCreated)
+        const localTime = local.lastModified || local.timeCreated || '';
+        const serverTime = server.lastModified || server.timeCreated || '';
+        mergedTasks.push(localTime >= serverTime ? local : server);
+      }
     }
-    if (data.projects && Array.isArray(data.projects)) {
-      setProjects(data.projects);
+
+    // Projects: union (server first, then local-only)
+    const mergedProjects = [...serverProjects];
+    for (const p of localProjects) {
+      if (!mergedProjects.includes(p)) mergedProjects.push(p);
     }
-    if (data.settings) {
-      if (typeof data.settings.overclock === 'boolean') setOverclock(data.settings.overclock);
-      if (typeof data.settings.overclockLocked === 'boolean') setOverclockLocked(data.settings.overclockLocked);
+
+    // Settings: server wins
+    const mergedOc = typeof serverSettings.overclock === 'boolean' ? serverSettings.overclock : localOc;
+    const mergedOcLocked = typeof serverSettings.overclockLocked === 'boolean' ? serverSettings.overclockLocked : localOcLocked;
+
+    // Tombstones: union with 30-day retention pruning
+    const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+    const tombstoneMap = new Map();
+    for (const t of [...localTombstones, ...serverTombstones]) {
+      if (t.deletedAt >= thirtyDaysAgo) tombstoneMap.set(t.id, t);
     }
+    const mergedTombstones = [...tombstoneMap.values()];
+
+    // Apply merged state
+    setTasks(mergedTasks);
+    setProjects(mergedProjects);
+    setOverclock(mergedOc);
+    setOverclockLocked(mergedOcLocked);
+    setDeletedTaskIds(mergedTombstones);
+
+    // Return merged data so useSync can push it back
+    return {
+      tasks: mergedTasks,
+      projects: mergedProjects,
+      settings: { overclock: mergedOc, overclockLocked: mergedOcLocked },
+      deletedTaskIds: mergedTombstones
+    };
   }, []);
 
   const {
@@ -198,7 +285,8 @@ const TaskManager = () => {
     tasks,
     projects,
     settings: { overclock, overclockLocked },
-    onPull: handleSyncPull,
+    deletedTaskIds,
+    onMerge: handleSyncMerge,
   });
 
   // Auto-calculate recurrence count from date range
@@ -434,7 +522,8 @@ const TaskManager = () => {
         dateWasManuallySet: undefined,
         timeCreated: now,
         timeScheduled: newTask.date ? newTask.date : null,
-        timeCompleted: null
+        timeCompleted: null,
+        lastModified: now
       };
 
       setTasks(prev => [...prev, taskToAdd]);
@@ -590,7 +679,8 @@ const TaskManager = () => {
           id: Date.now() + idx,
           timeCreated: now,
           timeScheduled: finalDate || null,
-          timeCompleted: null
+          timeCompleted: null,
+          lastModified: now
         };
       });
 
@@ -655,7 +745,7 @@ const TaskManager = () => {
 
   const updateTask = (taskId, updates) => {
     setTasks(tasks.map(task =>
-      task.id === taskId ? { ...task, ...updates } : task
+      task.id === taskId ? { ...task, ...updates, lastModified: new Date().toISOString() } : task
     ));
   };
 
@@ -872,7 +962,8 @@ const TaskManager = () => {
             ...task,
             completedDates: isCompleted
               ? completedDates.filter(d => d !== instanceDate)
-              : [...completedDates, instanceDate]
+              : [...completedDates, instanceDate],
+            lastModified: new Date().toISOString()
           };
         }
         return task;
@@ -887,7 +978,8 @@ const TaskManager = () => {
         return {
           ...task,
           completed: nowCompleted,
-          timeCompleted: nowCompleted ? new Date().toISOString() : null
+          timeCompleted: nowCompleted ? new Date().toISOString() : null,
+          lastModified: new Date().toISOString()
         };
       }
       return task;
@@ -918,18 +1010,26 @@ const TaskManager = () => {
 
   const performTaskDeletion = (taskId, deleteAllFuture, instanceDate) => {
     const task = tasks.find(t => t.id === taskId);
+    const now = new Date().toISOString();
     if (deleteAllFuture && task) {
       const rootId = task.isRecurringRoot ? task.id : task.recurringRootId;
+      // Tombstone the root and all linked tasks
+      const idsToDelete = tasks
+        .filter(t => t.id === rootId || t.recurringRootId === rootId)
+        .map(t => ({ id: t.id, deletedAt: now }));
+      setDeletedTaskIds(prev => [...prev, ...idsToDelete]);
       setTasks(tasks.filter(t => t.id !== rootId && t.recurringRootId !== rootId));
     } else if (instanceDate && task && task.isRecurringRoot) {
-      // Delete single instance by adding to excludedDates
+      // Delete single instance by adding to excludedDates (no tombstone — task still exists)
       const excludedDates = task.excludedDates || [];
       setTasks(tasks.map(t =>
         t.id === taskId
-          ? { ...t, excludedDates: [...excludedDates, instanceDate] }
+          ? { ...t, excludedDates: [...excludedDates, instanceDate], lastModified: now }
           : t
       ));
     } else {
+      // Tombstone the single task
+      setDeletedTaskIds(prev => [...prev, { id: taskId, deletedAt: now }]);
       setTasks(tasks
         .filter(t => t.id !== taskId)
         .map(t => ({
