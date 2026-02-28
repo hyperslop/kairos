@@ -47,6 +47,7 @@ function getDefaultData() {
     tasks: [],
     projects: ['Personal', 'Work', 'Health'],
     settings: { overclock: false, overclockLocked: false },
+    deletedTaskIds: [],
     updatedAt: new Date().toISOString()
   };
 }
@@ -95,7 +96,7 @@ app.get('/api/data/updated-at', requireAuth, (req, res) => {
 
 // Replace all data (last write wins)
 app.put('/api/data', requireAuth, (req, res) => {
-  const { tasks, projects, settings } = req.body;
+  const { tasks, projects, settings, deletedTaskIds } = req.body;
 
   if (!tasks || !Array.isArray(tasks)) {
     return res.status(400).json({ error: 'tasks must be an array' });
@@ -107,7 +108,8 @@ app.put('/api/data', requireAuth, (req, res) => {
   const saved = writeData({
     tasks,
     projects,
-    settings: settings || { overclock: false, overclockLocked: false }
+    settings: settings || { overclock: false, overclockLocked: false },
+    deletedTaskIds: Array.isArray(deletedTaskIds) ? deletedTaskIds : []
   });
 
   console.log(`[${new Date().toISOString()}] Data updated — ${tasks.length} tasks, ${projects.length} projects`);

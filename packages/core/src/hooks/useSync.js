@@ -1,10 +1,10 @@
 // useSync.js — Sync hook for Task Manager
 //
 // Handles bidirectional sync with the local sync server.
-// Strategy: "last write wins" using timestamps.
+// Strategy: per-task merge using lastModified timestamps + tombstones.
 //
 // How it works:
-//   1. On connect, pulls data from server if server is newer
+//   1. On connect, merges local and server data (neither side loses tasks)
 //   2. When local data changes, pushes to server
 //   3. Polls server periodically for changes from other devices
 //
@@ -31,7 +31,7 @@ function saveSyncConfig(config) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(config));
 }
 
-export function useSync({ tasks, projects, settings, onPull }) {
+export function useSync({ tasks, projects, settings, deletedTaskIds, onMerge }) {
   const [syncConfig, setSyncConfig] = useState(loadSyncConfig);
   const [syncStatus, setSyncStatus] = useState('disconnected'); // disconnected | connected | syncing | error
   const [syncMessage, setSyncMessage] = useState('');
@@ -77,15 +77,17 @@ export function useSync({ tasks, projects, settings, onPull }) {
 
   // ─── Push local data to server ──────────────────────────────
 
-  const push = useCallback(async () => {
+  const push = useCallback(async (dataOverride) => {
     if (!syncConfig.enabled || isPulling.current) return;
     try {
       setSyncStatus('syncing');
-      const result = await apiCall('PUT', '/api/data', {
+      const payload = dataOverride || {
         tasks,
         projects,
         settings,
-      });
+        deletedTaskIds: deletedTaskIds || [],
+      };
+      const result = await apiCall('PUT', '/api/data', payload);
       serverTimestamp.current = result.updatedAt;
       lastPushTime.current = result.updatedAt;
       setSyncStatus('connected');
@@ -96,9 +98,9 @@ export function useSync({ tasks, projects, settings, onPull }) {
       setSyncStatus('error');
       setSyncMessage(err.message);
     }
-  }, [syncConfig.enabled, tasks, projects, settings, apiCall]);
+  }, [syncConfig.enabled, tasks, projects, settings, deletedTaskIds, apiCall]);
 
-  // ─── Pull remote data from server ───────────────────────────
+  // ─── Pull remote data and merge ─────────────────────────────
 
   const pull = useCallback(async () => {
     if (!syncConfig.enabled) return;
@@ -115,19 +117,22 @@ export function useSync({ tasks, projects, settings, onPull }) {
         return false;
       }
 
-      // Server has newer data — pull it
+      // Server has newer data — merge
       setSyncStatus('syncing');
       const data = await apiCall('GET', '/api/data');
 
       isPulling.current = true;
       serverTimestamp.current = data.updatedAt;
-      onPull(data);
+      const mergedData = onMerge(data);
       setSyncStatus('connected');
       setLastSynced(new Date());
-      setSyncMessage('Pulled');
+      setSyncMessage('Merged');
 
-      // Small delay before allowing pushes again
-      setTimeout(() => { isPulling.current = false; }, 500);
+      // Push merged result back to server after a delay to avoid push-loops
+      setTimeout(() => {
+        isPulling.current = false;
+        if (mergedData) push(mergedData);
+      }, 600);
       return true;
     } catch (err) {
       console.error('Sync pull failed:', err);
@@ -135,7 +140,7 @@ export function useSync({ tasks, projects, settings, onPull }) {
       setSyncMessage(err.message);
       return false;
     }
-  }, [syncConfig.enabled, apiCall, onPull]);
+  }, [syncConfig.enabled, apiCall, onMerge, push]);
 
   // ─── Test connection ────────────────────────────────────────
 
@@ -159,7 +164,7 @@ export function useSync({ tasks, projects, settings, onPull }) {
   useEffect(() => {
     if (syncConfig.enabled && isInitialSync.current) {
       isInitialSync.current = false;
-      // On first connect, pull from server to get latest state
+      // On first connect, always merge with server
       pull().then(pulled => {
         // If server had no newer data (or was empty), push our current data
         if (!pulled) push();
@@ -178,7 +183,7 @@ export function useSync({ tasks, projects, settings, onPull }) {
   useEffect(() => {
     if (!syncConfig.enabled || isPulling.current) return;
 
-    const dataKey = JSON.stringify({ tasks, projects, settings });
+    const dataKey = JSON.stringify({ tasks, projects, settings, deletedTaskIds });
     if (prevData.current && prevData.current !== dataKey) {
       // Debounce pushes — wait 1 second after last change
       const timer = setTimeout(push, 1000);
@@ -186,7 +191,7 @@ export function useSync({ tasks, projects, settings, onPull }) {
       return () => clearTimeout(timer);
     }
     prevData.current = dataKey;
-  }, [syncConfig.enabled, tasks, projects, settings, push]);
+  }, [syncConfig.enabled, tasks, projects, settings, deletedTaskIds, push]);
 
   // ─── Poll for remote changes ────────────────────────────────
 
