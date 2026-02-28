@@ -1,4 +1,4 @@
-// Task Manager Sync Server
+// Kairos Sync Server
 // A simple local sync server that stores tasks in a JSON file.
 //
 // Usage:
@@ -74,7 +74,7 @@ function writeData(data) {
 
 // Health check (no auth) — useful for clients to detect the server
 app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok', server: 'task-manager-sync', version: '1.0.0' });
+  res.json({ status: 'ok', server: 'kairos-sync', version: '1.0.0' });
 });
 
 // Auth check — clients can verify their password is correct
@@ -121,7 +121,7 @@ app.put('/api/data', requireAuth, (req, res) => {
 app.listen(PORT, '0.0.0.0', () => {
   console.log('');
   console.log('╔══════════════════════════════════════════════╗');
-  console.log('║  Task Manager Sync Server                     ║');
+  console.log('║  Kairos Sync Server                              ║');
   console.log('╠══════════════════════════════════════════════╣');
   console.log(`║  URL:      http://0.0.0.0:${PORT}               ║`);
   console.log(`║  Data:     ${path.basename(DATA_FILE)}                       ║`);

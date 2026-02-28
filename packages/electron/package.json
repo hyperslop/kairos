@@ -1,7 +1,7 @@
 {
   "name": "task-manager-desktop",
   "version": "1.0.0",
-  "description": "Task Manager — Desktop App",
+  "description": "Kairos — Desktop App",
   "main": "main.js",
   "scripts": {
     "dev": "NODE_ENV=development electron .",
@@ -14,7 +14,7 @@
   },
   "build": {
     "appId": "com.taskmanager.desktop",
-    "productName": "Task Manager",
+    "productName": "Kairos",
     "directories": {
       "output": "dist"
     },
@@ -30,7 +30,7 @@
       ],
       "category": "Office",
       "icon": "assets/icon.png",
-      "maintainer": "Task Manager"
+      "maintainer": "Kairos"
     },
     "flatpak": {
       "runtime": "org.freedesktop.Platform",

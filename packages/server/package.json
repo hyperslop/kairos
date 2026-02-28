@@ -2,7 +2,7 @@
   "name": "task-manager-server",
   "version": "1.0.0",
   "private": true,
-  "description": "Simple local sync server for Task Manager",
+  "description": "Simple local sync server for Kairos",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",

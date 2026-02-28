@@ -2,7 +2,7 @@
   "name": "task-manager-multiplatform",
   "private": true,
   "version": "1.0.0",
-  "description": "Task Manager — Shared core with Electron desktop and Capacitor Android builds",
+  "description": "Kairos — Shared core with Electron desktop and Capacitor Android builds",
   "scripts": {
     "install:core": "cd packages/core && npm install",
     "install:electron": "cd packages/electron && npm install",

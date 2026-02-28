@@ -1,4 +1,4 @@
-// useSync.js — Sync hook for Task Manager
+// useSync.js — Sync hook for Kairos
 //
 // Handles bidirectional sync with the local sync server.
 // Strategy: per-task merge using lastModified timestamps + tombstones.

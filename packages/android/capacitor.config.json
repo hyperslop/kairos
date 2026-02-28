@@ -1,6 +1,6 @@
 {
   "appId": "com.taskmanager.app",
-  "appName": "Task Manager",
+  "appName": "Kairos",
   "webDir": "../core/dist",
   "bundledWebRuntime": false,
   "server": {

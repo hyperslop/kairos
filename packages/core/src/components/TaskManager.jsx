@@ -1638,7 +1638,7 @@ const TaskManager = () => {
         {/* Header */}
         <div className="border border-gray-700 bg-gray-800 p-3 md:p-4 mb-4">
           <div className="flex justify-between items-center mb-2 md:mb-0">
-            <h1 className="text-lg md:text-2xl font-mono font-bold">TASK_MANAGER</h1>
+            <h1 className="text-lg md:text-2xl font-mono font-bold">KAIROS</h1>
             <div className="flex gap-2 items-center">
               <button
                 onClick={exportTasksJSON}

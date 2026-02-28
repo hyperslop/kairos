@@ -1,10 +1,10 @@
 {
   "name": "task-manager-android",
   "version": "1.0.0",
-  "description": "Task Manager — Android App (Capacitor)",
+  "description": "Kairos — Android App (Capacitor)",
   "scripts": {
     "build:web": "cd ../core && npx vite build",
-    "cap:init": "npx cap init 'Task Manager' com.taskmanager.app --web-dir ../core/dist",
+    "cap:init": "npx cap init 'Kairos' com.taskmanager.app --web-dir ../core/dist",
     "cap:add": "npx cap add android",
     "cap:sync": "npm run build:web && npx cap sync android",
     "cap:open": "npx cap open android",

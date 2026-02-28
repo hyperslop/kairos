@@ -19,7 +19,7 @@ function createWindow() {
       nodeIntegration: false
     },
     icon: path.join(__dirname, 'assets', 'icon.png'),
-    title: 'Task Manager'
+    title: 'Kairos'
   });
 
   if (isDev) {
@@ -53,7 +53,7 @@ function createTray() {
 
   const contextMenu = Menu.buildFromTemplate([
     {
-      label: 'Show Task Manager',
+      label: 'Show Kairos',
       click: () => {
         if (mainWindow) {
           mainWindow.show();
@@ -71,7 +71,7 @@ function createTray() {
     }
   ]);
 
-  tray.setToolTip('Task Manager');
+  tray.setToolTip('Kairos');
   tray.setContextMenu(contextMenu);
 
   tray.on('click', () => {

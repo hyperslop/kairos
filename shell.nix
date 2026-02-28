@@ -156,7 +156,7 @@ pkgs.mkShell {
 
     echo ""
     echo "╔══════════════════════════════════════════════════════╗"
-    echo "║  Task Manager — Multiplatform Dev Shell              ║"
+    echo "║  Kairos — Multiplatform Dev Shell                    ║"
     echo "╠══════════════════════════════════════════════════════╣"
     echo "║  node:    $(node --version)                                 ║"
     echo "║  npm:     $(npm --version)                                  ║"
