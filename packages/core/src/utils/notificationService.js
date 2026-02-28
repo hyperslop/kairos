@@ -28,6 +28,12 @@ let _cachedLocalNotifications = null;
 async function getLocalNotifications() {
   if (_cachedLocalNotifications) return _cachedLocalNotifications;
   try {
+    // Try Capacitor 7's plugin registry first
+    if (window.Capacitor?.Plugins?.LocalNotifications) {
+      _cachedLocalNotifications = window.Capacitor.Plugins.LocalNotifications;
+      return _cachedLocalNotifications;
+    }
+    // Fallback: dynamic import
     const pkg = ['@capacitor', 'local-notifications'].join('/');
     const mod = await new Function('p', 'return import(p)')(pkg);
     _cachedLocalNotifications = mod.LocalNotifications;
@@ -132,7 +138,10 @@ export async function requestNotificationPermission() {
   if (isCapacitor()) {
     try {
       const LocalNotifications = await getLocalNotifications();
-      if (!LocalNotifications) return false;
+      if (!LocalNotifications) {
+        console.warn('LocalNotifications plugin not available');
+        return false;
+      }
 
       await LocalNotifications.createChannel({
         id: 'task-reminders',
@@ -144,7 +153,14 @@ export async function requestNotificationPermission() {
         vibration: true
       });
 
+      // Check if already granted before prompting
+      const current = await LocalNotifications.checkPermissions();
+      if (current.display === 'granted') return true;
+
       const result = await LocalNotifications.requestPermissions();
+      if (result.display !== 'granted') {
+        console.warn('Notification permission denied:', result.display);
+      }
       return result.display === 'granted';
     } catch (err) {
       console.warn('Capacitor notification permission error:', err);
