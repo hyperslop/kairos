@@ -48,7 +48,7 @@ const TaskManager = () => {
   });
   const [clockMode, setClockMode] = useState('hour');
 
-  const [batchRows, setBatchRows] = useState([{ id: Date.now(), name: '', description: '', date: '', time: '', project: 'Personal' }]);
+  const [batchRows, setBatchRows] = useState([{ id: Date.now(), name: '', description: '', date: '', time: '', project: 'Personal', urgent: false, carryOver: false, recurring: false }]);
 
   const [newTask, setNewTask] = useState({
     name: '',
@@ -653,6 +653,7 @@ const TaskManager = () => {
 
   const addBatchTasks = (goBack = false) => {
     const now = new Date().toISOString();
+    const todayStr = getLocalDateString(new Date());
     const newTasks = batchRows
       .filter(row => row.name.trim())
       .map((row, idx) => {
@@ -660,25 +661,41 @@ const TaskManager = () => {
         const timeResult = row.time ? parseBatchTime(row.time) : { date: null, time: null };
         const finalDate = timeResult.date || dateResult.date || '';
         const finalTime = timeResult.time || dateResult.time || '';
+
+        const isUrgent = row.urgent || false;
+        const isCarryOver = row.carryOver || false;
+        const isRecurring = row.recurring || false;
+
+        const taskDate = finalDate || ((isUrgent || isCarryOver || isRecurring) ? todayStr : '');
+
+        let recurrencePattern = null;
+        if (isRecurring) {
+          recurrencePattern = { frequency: 'daily', interval: 1, daysOfWeek: [], count: 'infinite' };
+        }
+
         return {
           name: row.name,
           description: row.description || '',
           project: row.project || 'Personal',
-          date: finalDate,
+          date: taskDate,
+          endDate: '',
           time: finalTime,
           hour: 12,
+          ampm: null,
           completed: false,
           predecessors: [],
           successors: [],
-          carryOver: false,
-          urgent: false,
-          recurring: false,
-          isRecurringRoot: false,
+          carryOver: isCarryOver,
+          urgent: isUrgent,
+          recurring: isRecurring,
+          isRecurringRoot: isRecurring,
           recurringRootId: null,
-          recurrencePattern: null,
+          recurrencePattern: recurrencePattern,
+          completedDates: [],
+          excludedDates: [],
           id: Date.now() + idx,
           timeCreated: now,
-          timeScheduled: finalDate || null,
+          timeScheduled: taskDate || null,
           timeCompleted: null,
           lastModified: now
         };
@@ -687,7 +704,7 @@ const TaskManager = () => {
     if (newTasks.length > 0) {
       setTasks(prev => [...prev, ...newTasks]);
       setSessionCreatedIds(prev => [...prev, ...newTasks.map(t => t.id)]);
-      setBatchRows([{ id: Date.now() + 999, name: '', description: '', date: '', time: '', project: 'Personal' }]);
+      setBatchRows([{ id: Date.now() + 999, name: '', description: '', date: '', time: '', project: 'Personal', urgent: false, carryOver: false, recurring: false }]);
     }
 
     if (goBack) {
@@ -1540,7 +1557,7 @@ const TaskManager = () => {
   });
 
   // Batch row helpers
-  const addBatchRow = () => setBatchRows(prev => [...prev, { id: Date.now(), name: '', description: '', date: '', time: '', project: 'Personal' }]);
+  const addBatchRow = () => setBatchRows(prev => [...prev, { id: Date.now(), name: '', description: '', date: '', time: '', project: 'Personal', urgent: false, carryOver: false, recurring: false }]);
   const removeBatchRow = (id) => setBatchRows(prev => prev.length > 1 ? prev.filter(r => r.id !== id) : prev);
   const duplicateBatchRow = (row) => setBatchRows(prev => {
     const idx = prev.findIndex(r => r.id === row.id);

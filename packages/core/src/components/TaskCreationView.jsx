@@ -142,7 +142,7 @@ const TaskCreationView = ({
           placeholder="project"
         />
         <button
-          onMouseDown={(e) => { e.preventDefault(); openDropdown(true); }}
+          onMouseDown={(e) => { e.preventDefault(); if (showDropdown && showAll) { setShowDropdown(false); setShowAll(false); } else { openDropdown(true); } }}
           className={`border border-l-0 border-gray-600 bg-gray-800 text-gray-400 hover:text-white hover:bg-gray-700 px-1.5 flex items-center justify-center`}
           type="button"
         >
@@ -672,10 +672,11 @@ const TaskCreationView = ({
                 <tr className="border-b border-gray-700 bg-gray-800">
                   <th className="px-2 py-1.5 text-xs text-gray-400 text-center w-10">#</th>
                   <th className="px-2 py-1.5 text-xs text-gray-400 text-left">NAME</th>
-                  <th className="px-2 py-1.5 text-xs text-gray-400 text-left">PROJECT</th>
+                  <th className="px-2 py-1.5 text-xs text-gray-400 text-left w-28">PROJECT</th>
                   <th className="px-2 py-1.5 text-xs text-gray-400 text-left">DESCRIPTION</th>
                   <th className="px-2 py-1.5 text-xs text-gray-400 text-left w-28">DATE</th>
                   <th className="px-2 py-1.5 text-xs text-gray-400 text-left w-20">TIME</th>
+                  <th className="px-2 py-1.5 text-xs text-gray-400 text-center w-20"></th>
                   <th className="px-2 py-1.5 text-xs text-gray-400 text-center w-16"></th>
                 </tr>
               </thead>
@@ -725,6 +726,67 @@ const TaskCreationView = ({
                         className="w-full border border-gray-700 bg-gray-900 text-white px-2 py-1 font-mono text-xs focus:border-blue-500 outline-none"
                         placeholder="HHMM"
                       />
+                    </td>
+                    <td className="px-1 py-1">
+                      <div className="flex gap-0.5 justify-center">
+                        <button
+                          onClick={() => {
+                            const newUrgent = !row.urgent;
+                            const todayStr = (() => { const d = new Date(); return `${d.getFullYear()}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getDate()).padStart(2,'0')}`; })();
+                            updateBatchRow(row.id, 'urgent', newUrgent);
+                            if (newUrgent) {
+                              updateBatchRow(row.id, 'carryOver', false);
+                              updateBatchRow(row.id, 'recurring', false);
+                              updateBatchRow(row.id, 'date', todayStr);
+                            }
+                          }}
+                          className={`w-6 h-6 border text-xs font-mono font-bold ${
+                            row.urgent ? 'bg-red-600 border-red-500 text-white' : 'bg-gray-800 border-gray-700 text-gray-400 hover:bg-gray-700'
+                          }`}
+                          title="Urgent"
+                        >
+                          U
+                        </button>
+                        <button
+                          onClick={() => {
+                            const newCarry = !row.carryOver;
+                            const todayStr = (() => { const d = new Date(); return `${d.getFullYear()}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getDate()).padStart(2,'0')}`; })();
+                            updateBatchRow(row.id, 'carryOver', newCarry);
+                            if (newCarry) {
+                              updateBatchRow(row.id, 'recurring', true);
+                              updateBatchRow(row.id, 'urgent', false);
+                              updateBatchRow(row.id, 'date', todayStr);
+                            } else {
+                              updateBatchRow(row.id, 'recurring', false);
+                            }
+                          }}
+                          className={`w-6 h-6 border text-xs font-mono font-bold ${
+                            row.carryOver ? 'bg-yellow-600 border-yellow-500 text-white' : 'bg-gray-800 border-gray-700 text-gray-400 hover:bg-gray-700'
+                          }`}
+                          title="Carry Over"
+                        >
+                          C
+                        </button>
+                        <button
+                          onClick={() => {
+                            const newRecurring = !row.recurring;
+                            const todayStr = (() => { const d = new Date(); return `${d.getFullYear()}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getDate()).padStart(2,'0')}`; })();
+                            updateBatchRow(row.id, 'recurring', newRecurring);
+                            if (newRecurring) {
+                              updateBatchRow(row.id, 'urgent', false);
+                              updateBatchRow(row.id, 'date', todayStr);
+                            } else {
+                              updateBatchRow(row.id, 'carryOver', false);
+                            }
+                          }}
+                          className={`w-6 h-6 border text-xs font-mono font-bold ${
+                            row.recurring ? 'bg-purple-600 border-purple-500 text-white' : 'bg-gray-800 border-gray-700 text-gray-400 hover:bg-gray-700'
+                          }`}
+                          title="Recurring"
+                        >
+                          R
+                        </button>
+                      </div>
                     </td>
                     <td className="px-1 py-1">
                       <div className="flex gap-1 justify-center">
