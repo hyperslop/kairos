@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Trash2 } from 'lucide-react';
 import DashboardView from './DashboardView';
 import UndatedView from './UndatedView';
@@ -78,6 +78,19 @@ const TaskManager = () => {
 
   const [newProject, setNewProject] = useState('');
   const [showAddProject, setShowAddProject] = useState(false);
+
+  // ========== REFS FOR SYNC MERGE ==========
+  const tasksRef = useRef(tasks);
+  const projectsRef = useRef(projects);
+  const overclockRef = useRef(overclock);
+  const overclockLockedRef = useRef(overclockLocked);
+  const deletedTaskIdsRef = useRef(deletedTaskIds);
+
+  useEffect(() => { tasksRef.current = tasks; }, [tasks]);
+  useEffect(() => { projectsRef.current = projects; }, [projects]);
+  useEffect(() => { overclockRef.current = overclock; }, [overclock]);
+  useEffect(() => { overclockLockedRef.current = overclockLocked; }, [overclockLocked]);
+  useEffect(() => { deletedTaskIdsRef.current = deletedTaskIds; }, [deletedTaskIds]);
 
   useEffect(() => {
     localStorage.setItem('taskManagerTasks', JSON.stringify(tasks));
@@ -195,7 +208,14 @@ const TaskManager = () => {
   const [importExportMsg, setImportExportMsg] = useState('');
 
   // ========== SYNC ==========
+  const normalizeTombstone = (t) => {
+    if (typeof t === 'object' && t !== null && t.id !== undefined) return t;
+    return { id: t, deletedAt: new Date().toISOString() };
+  };
+
   const handleSyncMerge = useCallback((serverData) => {
+    if (!serverData) return null;
+
     const serverTasks = (serverData.tasks || []).map(t => ({
       ...t,
       predecessors: t.predecessors || [],
@@ -207,18 +227,17 @@ const TaskManager = () => {
     const serverSettings = serverData.settings || {};
     const serverTombstones = serverData.deletedTaskIds || [];
 
-    // Read current local state via setter callbacks to get latest values
-    let localTasks, localProjects, localOc, localOcLocked, localTombstones;
-    setTasks(prev => { localTasks = prev; return prev; });
-    setProjects(prev => { localProjects = prev; return prev; });
-    setOverclock(prev => { localOc = prev; return prev; });
-    setOverclockLocked(prev => { localOcLocked = prev; return prev; });
-    setDeletedTaskIds(prev => { localTombstones = prev; return prev; });
+    // Read current local state from refs (safe, always current)
+    const localTasks = tasksRef.current || [];
+    const localProjects = projectsRef.current || [];
+    const localOc = overclockRef.current;
+    const localOcLocked = overclockLockedRef.current;
+    const localTombstones = deletedTaskIdsRef.current || [];
 
-    // Build deleted ID sets from both sides
+    // Build deleted ID sets from both sides (handle both plain IDs and {id, deletedAt} objects)
     const deletedIds = new Set([
-      ...localTombstones.map(t => t.id),
-      ...serverTombstones.map(t => t.id)
+      ...localTombstones.map(t => normalizeTombstone(t).id),
+                               ...serverTombstones.map(t => normalizeTombstone(t).id)
     ]);
 
     // Build task maps by ID
@@ -258,7 +277,8 @@ const TaskManager = () => {
     const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
     const tombstoneMap = new Map();
     for (const t of [...localTombstones, ...serverTombstones]) {
-      if (t.deletedAt >= thirtyDaysAgo) tombstoneMap.set(t.id, t);
+      const norm = normalizeTombstone(t);
+      if (norm.deletedAt >= thirtyDaysAgo) tombstoneMap.set(norm.id, norm);
     }
     const mergedTombstones = [...tombstoneMap.values()];
 
@@ -322,10 +342,10 @@ const TaskManager = () => {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [newTask.recurring, newTask.date, newTask.endDate,
-      newTask.recurrencePattern?.frequency,
-      newTask.recurrencePattern?.interval,
-      // eslint-disable-next-line react-hooks/exhaustive-deps
-      JSON.stringify(newTask.recurrencePattern?.daysOfWeek)]);
+  newTask.recurrencePattern?.frequency,
+  newTask.recurrencePattern?.interval,
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  JSON.stringify(newTask.recurrencePattern?.daysOfWeek)]);
 
   const generateCalendarDates = (month) => {
     const dates = [];
@@ -350,8 +370,8 @@ const TaskManager = () => {
     const taskStartDate = new Date(newTask.date + 'T00:00:00');
     // If endDate exists, limit recurring to that range
     const effectiveEnd = newTask.endDate
-      ? new Date(Math.min(new Date(newTask.endDate + 'T00:00:00').getTime(), monthEnd.getTime()))
-      : monthEnd;
+    ? new Date(Math.min(new Date(newTask.endDate + 'T00:00:00').getTime(), monthEnd.getTime()))
+    : monthEnd;
     const dates = new Set();
     // Walk day by day through the month
     let currentDate = new Date(Math.max(taskStartDate.getTime(), monthStart.getTime()));
@@ -399,7 +419,7 @@ const TaskManager = () => {
 
   const generateRecurringInstances = (rootTask, viewStart, viewEnd) => {
     if (!rootTask.isRecurringRoot || !rootTask.recurrencePattern || !rootTask.date) return [];
-    
+
     const instances = [];
     const pattern = rootTask.recurrencePattern;
     const taskStartDate = new Date(rootTask.date + 'T00:00:00');
@@ -407,10 +427,10 @@ const TaskManager = () => {
     const maxOccurrences = pattern.count === 'infinite' ? Infinity : pattern.count;
     const completedDates = rootTask.completedDates || [];
     const excludedDates = rootTask.excludedDates || [];
-    
+
     // Effective end: earliest of task end date and view end
     const effectiveEnd = taskEndDate && taskEndDate < viewEnd ? taskEndDate : viewEnd;
-    
+
     // First, find ALL matching dates up to effectiveEnd to determine which is the last
     const allMatchingDates = [];
     let scanDate = new Date(taskStartDate);
@@ -424,13 +444,13 @@ const TaskManager = () => {
       scanDate = getNextDate(scanDate);
     }
     const lastMatchingDate = taskEndDate && allMatchingDates.length > 0
-      ? allMatchingDates[allMatchingDates.length - 1]
-      : null;
-    
+    ? allMatchingDates[allMatchingDates.length - 1]
+    : null;
+
     // Now generate instances within the view window
     let currentDate = new Date(taskStartDate);
     let occurrenceCount = 0;
-    
+
     while (currentDate <= effectiveEnd && occurrenceCount < maxOccurrences) {
       if (shouldIncludeDate(taskStartDate, currentDate, pattern) && currentDate >= taskStartDate) {
         occurrenceCount++;
@@ -440,7 +460,7 @@ const TaskManager = () => {
           if (!isExcluded) {
             const isCompleted = completedDates.includes(instanceDate);
             const isLastInstance = rootTask.urgent && lastMatchingDate && instanceDate === lastMatchingDate;
-            
+
             instances.push({
               ...rootTask,
               id: `${rootTask.id}-${instanceDate}`,
@@ -471,16 +491,16 @@ const TaskManager = () => {
       case 'weekly':
         if (diffDays < 0) return false;
         const dayOfWeek = checkDate.getDay();
-        const weeksSinceStart = Math.floor(diffDays / 7);
-        return weeksSinceStart % pattern.interval === 0 && pattern.daysOfWeek.includes(dayOfWeek);
+      const weeksSinceStart = Math.floor(diffDays / 7);
+      return weeksSinceStart % pattern.interval === 0 && pattern.daysOfWeek.includes(dayOfWeek);
       case 'monthly':
         if (diffDays < 0) return false;
         const monthsDiff = (checkDate.getFullYear() - startDate.getFullYear()) * 12 + (checkDate.getMonth() - startDate.getMonth());
-        return monthsDiff >= 0 && monthsDiff % pattern.interval === 0 && checkDate.getDate() === startDate.getDate();
+      return monthsDiff >= 0 && monthsDiff % pattern.interval === 0 && checkDate.getDate() === startDate.getDate();
       case 'yearly':
         if (diffDays < 0) return false;
         const yearsDiff = checkDate.getFullYear() - startDate.getFullYear();
-        return yearsDiff >= 0 && yearsDiff % pattern.interval === 0 && checkDate.getMonth() === startDate.getMonth() && checkDate.getDate() === startDate.getDate();
+      return yearsDiff >= 0 && yearsDiff % pattern.interval === 0 && checkDate.getMonth() === startDate.getMonth() && checkDate.getDate() === startDate.getDate();
       default:
         return false;
     }
@@ -655,51 +675,51 @@ const TaskManager = () => {
     const now = new Date().toISOString();
     const todayStr = getLocalDateString(new Date());
     const newTasks = batchRows
-      .filter(row => row.name.trim())
-      .map((row, idx) => {
-        const dateResult = row.date ? parseBatchDate(row.date) : { date: null, time: null };
-        const timeResult = row.time ? parseBatchTime(row.time) : { date: null, time: null };
-        const finalDate = timeResult.date || dateResult.date || '';
-        const finalTime = timeResult.time || dateResult.time || '';
+    .filter(row => row.name.trim())
+    .map((row, idx) => {
+      const dateResult = row.date ? parseBatchDate(row.date) : { date: null, time: null };
+      const timeResult = row.time ? parseBatchTime(row.time) : { date: null, time: null };
+      const finalDate = timeResult.date || dateResult.date || '';
+      const finalTime = timeResult.time || dateResult.time || '';
 
-        const isUrgent = row.urgent || false;
-        const isCarryOver = row.carryOver || false;
-        const isRecurring = row.recurring || false;
+      const isUrgent = row.urgent || false;
+      const isCarryOver = row.carryOver || false;
+      const isRecurring = row.recurring || false;
 
-        const taskDate = finalDate || ((isUrgent || isCarryOver || isRecurring) ? todayStr : '');
+      const taskDate = finalDate || ((isUrgent || isCarryOver || isRecurring) ? todayStr : '');
 
-        let recurrencePattern = null;
-        if (isRecurring) {
-          recurrencePattern = { frequency: 'daily', interval: 1, daysOfWeek: [], count: 'infinite' };
-        }
+      let recurrencePattern = null;
+      if (isRecurring) {
+        recurrencePattern = { frequency: 'daily', interval: 1, daysOfWeek: [], count: 'infinite' };
+      }
 
-        return {
-          name: row.name,
-          description: row.description || '',
-          project: row.project || 'Personal',
-          date: taskDate,
-          endDate: '',
-          time: finalTime,
-          hour: 12,
-          ampm: null,
-          completed: false,
-          predecessors: [],
-          successors: [],
-          carryOver: isCarryOver,
-          urgent: isUrgent,
-          recurring: isRecurring,
-          isRecurringRoot: isRecurring,
-          recurringRootId: null,
-          recurrencePattern: recurrencePattern,
-          completedDates: [],
-          excludedDates: [],
-          id: Date.now() + idx,
-          timeCreated: now,
-          timeScheduled: taskDate || null,
-          timeCompleted: null,
-          lastModified: now
-        };
-      });
+      return {
+        name: row.name,
+        description: row.description || '',
+        project: row.project || 'Personal',
+        date: taskDate,
+        endDate: '',
+        time: finalTime,
+        hour: 12,
+        ampm: null,
+        completed: false,
+        predecessors: [],
+        successors: [],
+        carryOver: isCarryOver,
+        urgent: isUrgent,
+        recurring: isRecurring,
+        isRecurringRoot: isRecurring,
+        recurringRootId: null,
+        recurrencePattern: recurrencePattern,
+        completedDates: [],
+        excludedDates: [],
+        id: Date.now() + idx,
+         timeCreated: now,
+         timeScheduled: taskDate || null,
+         timeCompleted: null,
+         lastModified: now
+      };
+    });
 
     if (newTasks.length > 0) {
       setTasks(prev => [...prev, ...newTasks]);
@@ -762,7 +782,7 @@ const TaskManager = () => {
 
   const updateTask = (taskId, updates) => {
     setTasks(tasks.map(task =>
-      task.id === taskId ? { ...task, ...updates, lastModified: new Date().toISOString() } : task
+    task.id === taskId ? { ...task, ...updates, lastModified: new Date().toISOString() } : task
     ));
   };
 
@@ -978,8 +998,8 @@ const TaskManager = () => {
           return {
             ...task,
             completedDates: isCompleted
-              ? completedDates.filter(d => d !== instanceDate)
-              : [...completedDates, instanceDate],
+            ? completedDates.filter(d => d !== instanceDate)
+            : [...completedDates, instanceDate],
             lastModified: new Date().toISOString()
           };
         }
@@ -996,7 +1016,7 @@ const TaskManager = () => {
           ...task,
           completed: nowCompleted,
           timeCompleted: nowCompleted ? new Date().toISOString() : null,
-          lastModified: new Date().toISOString()
+                       lastModified: new Date().toISOString()
         };
       }
       return task;
@@ -1032,28 +1052,28 @@ const TaskManager = () => {
       const rootId = task.isRecurringRoot ? task.id : task.recurringRootId;
       // Tombstone the root and all linked tasks
       const idsToDelete = tasks
-        .filter(t => t.id === rootId || t.recurringRootId === rootId)
-        .map(t => ({ id: t.id, deletedAt: now }));
+      .filter(t => t.id === rootId || t.recurringRootId === rootId)
+      .map(t => ({ id: t.id, deletedAt: now }));
       setDeletedTaskIds(prev => [...prev, ...idsToDelete]);
       setTasks(tasks.filter(t => t.id !== rootId && t.recurringRootId !== rootId));
     } else if (instanceDate && task && task.isRecurringRoot) {
       // Delete single instance by adding to excludedDates (no tombstone — task still exists)
       const excludedDates = task.excludedDates || [];
       setTasks(tasks.map(t =>
-        t.id === taskId
-          ? { ...t, excludedDates: [...excludedDates, instanceDate], lastModified: now }
-          : t
+      t.id === taskId
+      ? { ...t, excludedDates: [...excludedDates, instanceDate], lastModified: now }
+      : t
       ));
     } else {
       // Tombstone the single task
       setDeletedTaskIds(prev => [...prev, { id: taskId, deletedAt: now }]);
       setTasks(tasks
-        .filter(t => t.id !== taskId)
-        .map(t => ({
-          ...t,
-          predecessors: t.predecessors.filter(id => id !== taskId),
-          successors: t.successors.filter(id => id !== taskId)
-        }))
+      .filter(t => t.id !== taskId)
+      .map(t => ({
+        ...t,
+        predecessors: t.predecessors.filter(id => id !== taskId),
+                 successors: t.successors.filter(id => id !== taskId)
+      }))
       );
     }
     setDeleteRecurringModal(null);
@@ -1135,14 +1155,10 @@ const TaskManager = () => {
         const excludedDates = task.excludedDates || [];
 
         // --- CARRY-OVER + RECURRING ---
-        // This is ONE task that "moves" through recurring dates.
-        // It sits on the first upcoming uncompleted recurring date.
-        // Completing it once finishes it entirely.
         if (task.carryOver) {
           if (checkDate < taskStartDate) return;
           if (taskEndDate && checkDate > taskEndDate) return;
 
-          // Build list of all recurring dates within range
           let scanD = new Date(taskStartDate);
           let occCount = 0;
           const allRecurDates = [];
@@ -1155,11 +1171,9 @@ const TaskManager = () => {
             scanD = getNextDate(scanD);
           }
 
-          // If completed on ANY recurring date, the task is done
           const filteredRecurDates = allRecurDates.filter(d => !excludedDates.includes(d));
           const completedOn = filteredRecurDates.find(d => completedDates.includes(d));
           if (completedOn) {
-            // Show completed on the date it was completed
             if (completedOn === dateStr) {
               const isLast = filteredRecurDates.length > 0 && dateStr === filteredRecurDates[filteredRecurDates.length - 1];
               result.push({
@@ -1178,8 +1192,6 @@ const TaskManager = () => {
             return;
           }
 
-          // Not completed — find the current resting date:
-          // The first recurring date that is >= today
           const today = new Date();
           today.setHours(0, 0, 0, 0);
           let restingDate = null;
@@ -1190,12 +1202,10 @@ const TaskManager = () => {
               break;
             }
           }
-          // If all recurring dates are past, rest on the last one
           if (!restingDate && filteredRecurDates.length > 0) {
             restingDate = filteredRecurDates[filteredRecurDates.length - 1];
           }
 
-          // Only show on the resting date
           if (restingDate !== dateStr) return;
 
           const isLast = filteredRecurDates.length > 0 && dateStr === filteredRecurDates[filteredRecurDates.length - 1];
@@ -1215,13 +1225,11 @@ const TaskManager = () => {
         }
 
         // --- PURE RECURRING (no carry-over) ---
-        // Each matching date is a separate instance, independently completable
         if (checkDate < taskStartDate) return;
         if (taskEndDate && checkDate > taskEndDate) return;
         if (!shouldIncludeDate(taskStartDate, checkDate, task.recurrencePattern)) return;
         if (excludedDates.includes(dateStr)) return;
 
-        // Count occurrences to enforce limit
         let occCount = 0;
         let scanD = new Date(taskStartDate);
         while (scanD <= checkDate) {
@@ -1235,7 +1243,6 @@ const TaskManager = () => {
 
         const isCompleted = completedDates.includes(dateStr);
 
-        // Urgent: only on the last instance
         let isLastInstance = false;
         if (task.urgent && taskEndDate) {
           let nextCheck = new Date(checkDate);
@@ -1279,14 +1286,12 @@ const TaskManager = () => {
           const endD = new Date(task.endDate + 'T00:00:00');
           if (checkDate > endD) return;
         }
-        // If already completed, only show on the original date
         if (task.completed && task.date !== dateStr) return;
-        // Determine if this is the last day (for urgent)
         const isLastDay = task.urgent && task.endDate && dateStr === task.endDate;
         result.push({
           ...task,
           _displayDate: dateStr,
-          urgent: isLastDay // Only urgent on the final carry-over day
+          urgent: isLastDay
         });
         return;
       }
@@ -1353,7 +1358,6 @@ const TaskManager = () => {
     const allowTwoDates = newTask.carryOver || newTask.recurring;
 
     if (!allowTwoDates) {
-      // Single date mode - clicking same date deselects, otherwise replaces
       if (newTask.date === dateStr) {
         setNewTask(prev => ({ ...prev, date: '', endDate: '', dateWasManuallySet: false }));
       } else {
@@ -1362,8 +1366,6 @@ const TaskManager = () => {
       return;
     }
 
-    // Two-date mode (carry-over or recurring active)
-    // Clicking the current start date → deselect it (promote endDate if exists)
     if (newTask.date === dateStr) {
       if (newTask.endDate) {
         setNewTask(prev => ({ ...prev, date: prev.endDate, endDate: '', dateWasManuallySet: true }));
@@ -1373,7 +1375,6 @@ const TaskManager = () => {
       return;
     }
 
-    // If no first date yet, set it
     if (!newTask.date) {
       const updates = { date: dateStr, endDate: '', dateWasManuallySet: true };
       if (newTask.recurring && newTask.recurrencePattern && newTask.recurrencePattern.frequency === 'weekly') {
@@ -1383,8 +1384,6 @@ const TaskManager = () => {
       return;
     }
 
-    // First date exists → always set/move endDate, auto-sort so date < endDate
-    // But if clicking the current endDate, deselect it (back to "forever")
     if (newTask.endDate === dateStr) {
       setNewTask(prev => ({ ...prev, endDate: '' }));
       return;
@@ -1392,14 +1391,12 @@ const TaskManager = () => {
     const existingDate = new Date(newTask.date + 'T00:00:00');
     const clickedDate = new Date(dateStr + 'T00:00:00');
     if (clickedDate < existingDate) {
-      // Clicked earlier than current start → swap: clicked becomes start, old start becomes end
       const updates = { date: dateStr, endDate: newTask.date, dateWasManuallySet: true };
       if (newTask.recurring && newTask.recurrencePattern && newTask.recurrencePattern.frequency === 'weekly') {
         updates.recurrencePattern = { ...newTask.recurrencePattern, daysOfWeek: [date.getDay()] };
       }
       setNewTask(prev => ({ ...prev, ...updates }));
     } else {
-      // Clicked later or same → set as endDate
       setNewTask(prev => ({ ...prev, endDate: dateStr }));
     }
   };
@@ -1408,17 +1405,14 @@ const TaskManager = () => {
     const newVal = !newTask.carryOver;
     const updates = { carryOver: newVal };
     if (newVal) {
-      // Turning on: auto-set date if none
       if (!newTask.date) {
         updates.date = getLocalDateString(new Date());
         updates.dateWasManuallySet = false;
       }
-      // Also enable recurring with default pattern
       updates.recurring = true;
       const taskDate = newTask.date ? new Date(newTask.date + 'T00:00:00') : new Date();
       updates.recurrencePattern = { frequency: 'daily', interval: 1, daysOfWeek: [taskDate.getDay()], count: 'infinite' };
     } else {
-      // Also turn off recurring
       updates.recurring = false;
       updates.recurrencePattern = null;
       if (!newTask.dateWasManuallySet && !newTask.urgent) {
@@ -1513,7 +1507,6 @@ const TaskManager = () => {
       if (newCount <= 0) newCount = 'infinite';
     }
     const updates = { recurrencePattern: { ...newTask.recurrencePattern, count: newCount } };
-    // Auto-adjust endDate when count is manually set and we have a start date
     if (newTask.date && newCount !== 'infinite') {
       const newEndDate = computeEndDateFromCount(newTask.date, { ...newTask.recurrencePattern, count: newCount }, newCount);
       if (newEndDate) {
@@ -1577,292 +1570,292 @@ const TaskManager = () => {
   // Render recent tasks list
   const renderRecentTasksList = () => (
     <div className="border-t border-gray-700 mt-4 pt-3">
-      <h3 className="text-xs font-mono text-gray-500 mb-2">RECENT TASKS</h3>
-      <div className="space-y-1">
-        {recentTasks.length === 0 ? (
-          <p className="text-gray-600 font-mono text-xs">// no tasks yet</p>
-        ) : (
-          recentTasks.map(task => {
-            const isSessionTask = sessionCreatedIds.includes(task.id);
-            const isBeingEdited = editingRecentTaskId === task.id;
-            return (
-              <div
-                key={task.id}
-                className={`flex items-center justify-between px-2 py-1.5 text-xs font-mono border cursor-pointer ${
-                  isBeingEdited
-                    ? 'bg-blue-950 border-blue-600 text-blue-200'
-                    : isSessionTask
-                      ? 'bg-green-950 border-green-800 text-green-200 hover:bg-green-900'
-                      : 'bg-gray-900 border-gray-700 text-gray-300 hover:bg-gray-800'
-                }`}
-                onClick={() => loadRecentTaskForEditing(task)}
-              >
-                <div className="flex items-center gap-2 flex-1 min-w-0">
-                  <span className={`truncate ${task.completed ? 'line-through text-gray-600' : ''}`}>
-                    {task.name}
-                  </span>
-                  {task.urgent && <span className="text-red-500 flex-shrink-0">[!]</span>}
-                </div>
-                <div className="flex items-center gap-2 flex-shrink-0 ml-2">
-                  <span className="text-gray-500">{task.date || 'undated'}</span>
-                  {task.time && <span className="text-gray-500">{task.time}</span>}
-                  {task.timeCreated && <span className="text-gray-600">{formatTimeShort(task.timeCreated)}</span>}
-                  <button
-                    onClick={(e) => { e.stopPropagation(); deleteTask(task.id); }}
-                    className="text-red-500 hover:text-red-400 p-0.5"
-                  >
-                    <Trash2 size={14} />
-                  </button>
-                </div>
-              </div>
-            );
-          })
-        )}
-      </div>
+    <h3 className="text-xs font-mono text-gray-500 mb-2">RECENT TASKS</h3>
+    <div className="space-y-1">
+    {recentTasks.length === 0 ? (
+      <p className="text-gray-600 font-mono text-xs">// no tasks yet</p>
+    ) : (
+      recentTasks.map(task => {
+        const isSessionTask = sessionCreatedIds.includes(task.id);
+        const isBeingEdited = editingRecentTaskId === task.id;
+        return (
+          <div
+          key={task.id}
+          className={`flex items-center justify-between px-2 py-1.5 text-xs font-mono border cursor-pointer ${
+            isBeingEdited
+            ? 'bg-blue-950 border-blue-600 text-blue-200'
+            : isSessionTask
+            ? 'bg-green-950 border-green-800 text-green-200 hover:bg-green-900'
+            : 'bg-gray-900 border-gray-700 text-gray-300 hover:bg-gray-800'
+          }`}
+          onClick={() => loadRecentTaskForEditing(task)}
+          >
+          <div className="flex items-center gap-2 flex-1 min-w-0">
+          <span className={`truncate ${task.completed ? 'line-through text-gray-600' : ''}`}>
+          {task.name}
+          </span>
+          {task.urgent && <span className="text-red-500 flex-shrink-0">[!]</span>}
+          </div>
+          <div className="flex items-center gap-2 flex-shrink-0 ml-2">
+          <span className="text-gray-500">{task.date || 'undated'}</span>
+          {task.time && <span className="text-gray-500">{task.time}</span>}
+          {task.timeCreated && <span className="text-gray-600">{formatTimeShort(task.timeCreated)}</span>}
+          <button
+          onClick={(e) => { e.stopPropagation(); deleteTask(task.id); }}
+          className="text-red-500 hover:text-red-400 p-0.5"
+          >
+          <Trash2 size={14} />
+          </button>
+          </div>
+          </div>
+        );
+      })
+    )}
+    </div>
     </div>
   );
 
   // Render action buttons
   const renderActionButtons = (createFn) => (
     <div className="flex gap-2 pt-2">
-      {editingRecentTaskId ? (
-        <button
-          onClick={saveRecentTask}
-          className="flex-1 bg-green-700 border border-green-600 text-white px-4 py-2 font-mono hover:bg-green-600 text-sm"
-        >
-          SAVE
-        </button>
-      ) : (
-        <button
-          onClick={() => createFn(false)}
-          className="flex-1 bg-green-700 border border-green-600 text-white px-4 py-2 font-mono hover:bg-green-600 text-sm"
-        >
-          CREATE
-        </button>
-      )}
+    {editingRecentTaskId ? (
       <button
-        onClick={editingRecentTaskId ? () => resetTaskForm() : goBackFromNewTask}
-        className="flex-1 bg-gray-700 border border-gray-600 text-gray-300 px-4 py-2 font-mono hover:bg-gray-600 text-sm"
+      onClick={saveRecentTask}
+      className="flex-1 bg-green-700 border border-green-600 text-white px-4 py-2 font-mono hover:bg-green-600 text-sm"
       >
-        CANCEL
+      SAVE
       </button>
+    ) : (
+      <button
+      onClick={() => createFn(false)}
+      className="flex-1 bg-green-700 border border-green-600 text-white px-4 py-2 font-mono hover:bg-green-600 text-sm"
+      >
+      CREATE
+      </button>
+    )}
+    <button
+    onClick={editingRecentTaskId ? () => resetTaskForm() : goBackFromNewTask}
+    className="flex-1 bg-gray-700 border border-gray-600 text-gray-300 px-4 py-2 font-mono hover:bg-gray-600 text-sm"
+    >
+    CANCEL
+    </button>
     </div>
   );
 
   return (
     <div className="min-h-screen bg-gray-900 text-gray-100 p-2 md:p-4">
-      <div className="max-w-7xl mx-auto">
-        {/* Header */}
-        <div className="border border-gray-700 bg-gray-800 p-3 md:p-4 mb-4">
-          <div className="flex justify-between items-center mb-2 md:mb-0">
-            <h1 className="text-lg md:text-2xl font-mono font-bold">KAIROS</h1>
-            <div className="flex gap-2 items-center">
-              <button
-                onClick={exportTasksJSON}
-                className="hidden md:inline-block px-3 py-2 font-mono text-xs border bg-gray-700 border-gray-600 text-gray-300 hover:bg-gray-600"
-                title="Export tasks to JSON file"
-              >
-                EXPORT
-              </button>
-              <button
-                onClick={importTasksJSON}
-                className="hidden md:inline-block px-3 py-2 font-mono text-xs border bg-gray-700 border-gray-600 text-gray-300 hover:bg-gray-600"
-                title="Import tasks from JSON file"
-              >
-                IMPORT
-              </button>
-              {importExportMsg && (
-                <span className={`font-mono text-xs ${importExportMsg.includes('failed') ? 'text-red-400' : 'text-green-400'}`}>
-                  {importExportMsg}
-                </span>
-              )}
-              <SyncPanel
-                syncConfig={syncConfig}
-                updateSyncConfig={updateSyncConfig}
-                syncStatus={syncStatus}
-                syncMessage={syncMessage}
-                lastSynced={lastSynced}
-                push={syncPush}
-                pull={syncPull}
-                testConnection={testConnection}
-              />
-            </div>
-          </div>
-          <div className="flex gap-2 items-center">
-            <button
-              onClick={() => setSelectedView('dashboard')}
-              className={`flex-1 md:flex-none px-3 md:px-4 py-2 font-mono text-xs md:text-sm border ${
-                selectedView === 'dashboard' ? 'bg-blue-600 border-blue-500 text-white' : 'bg-gray-700 border-gray-600 text-gray-300 hover:bg-gray-600'
-              }`}
-            >
-              DASHBOARD
-            </button>
-            <button
-              onClick={() => setSelectedView('undated')}
-              className={`flex-1 md:flex-none px-3 md:px-4 py-2 font-mono text-xs md:text-sm border ${
-                selectedView === 'undated' ? 'bg-blue-600 border-blue-500 text-white' : 'bg-gray-700 border-gray-600 text-gray-300 hover:bg-gray-600'
-              }`}
-            >
-              UNDATED
-            </button>
-            <button
-              onClick={navigateToNewTask}
-              className={`flex-1 md:flex-none px-3 md:px-4 py-2 font-mono text-xs md:text-sm border ${
-                selectedView === 'newTask' ? 'bg-green-600 border-green-500 text-white' : 'bg-green-700 border-green-600 text-white hover:bg-green-600'
-              }`}
-            >
-              [+] ADD
-            </button>
-            {/* Mobile-only export/import buttons */}
-            <button
-              onClick={exportTasksJSON}
-              className="md:hidden px-3 py-2 font-mono text-xs border bg-gray-700 border-gray-600 text-gray-300"
-              title="Export"
-            >
-              EXP
-            </button>
-            <button
-              onClick={importTasksJSON}
-              className="md:hidden px-3 py-2 font-mono text-xs border bg-gray-700 border-gray-600 text-gray-300"
-              title="Import"
-            >
-              IMP
-            </button>
-          </div>
-        </div>
+    <div className="max-w-7xl mx-auto">
+    {/* Header */}
+    <div className="border border-gray-700 bg-gray-800 p-3 md:p-4 mb-4">
+    <div className="flex justify-between items-center mb-2 md:mb-0">
+    <h1 className="text-lg md:text-2xl font-mono font-bold">KAIROS</h1>
+    <div className="flex gap-2 items-center">
+    <button
+    onClick={exportTasksJSON}
+    className="hidden md:inline-block px-3 py-2 font-mono text-xs border bg-gray-700 border-gray-600 text-gray-300 hover:bg-gray-600"
+    title="Export tasks to JSON file"
+    >
+    EXPORT
+    </button>
+    <button
+    onClick={importTasksJSON}
+    className="hidden md:inline-block px-3 py-2 font-mono text-xs border bg-gray-700 border-gray-600 text-gray-300 hover:bg-gray-600"
+    title="Import tasks from JSON file"
+    >
+    IMPORT
+    </button>
+    {importExportMsg && (
+      <span className={`font-mono text-xs ${importExportMsg.includes('failed') ? 'text-red-400' : 'text-green-400'}`}>
+      {importExportMsg}
+      </span>
+    )}
+    <SyncPanel
+    syncConfig={syncConfig}
+    updateSyncConfig={updateSyncConfig}
+    syncStatus={syncStatus}
+    syncMessage={syncMessage}
+    lastSynced={lastSynced}
+    push={syncPush}
+    pull={syncPull}
+    testConnection={testConnection}
+    />
+    </div>
+    </div>
+    <div className="flex gap-2 items-center">
+    <button
+    onClick={() => setSelectedView('dashboard')}
+    className={`flex-1 md:flex-none px-3 md:px-4 py-2 font-mono text-xs md:text-sm border ${
+      selectedView === 'dashboard' ? 'bg-blue-600 border-blue-500 text-white' : 'bg-gray-700 border-gray-600 text-gray-300 hover:bg-gray-600'
+    }`}
+    >
+    DASHBOARD
+    </button>
+    <button
+    onClick={() => setSelectedView('undated')}
+    className={`flex-1 md:flex-none px-3 md:px-4 py-2 font-mono text-xs md:text-sm border ${
+      selectedView === 'undated' ? 'bg-blue-600 border-blue-500 text-white' : 'bg-gray-700 border-gray-600 text-gray-300 hover:bg-gray-600'
+    }`}
+    >
+    UNDATED
+    </button>
+    <button
+    onClick={navigateToNewTask}
+    className={`flex-1 md:flex-none px-3 md:px-4 py-2 font-mono text-xs md:text-sm border ${
+      selectedView === 'newTask' ? 'bg-green-600 border-green-500 text-white' : 'bg-green-700 border-green-600 text-white hover:bg-green-600'
+    }`}
+    >
+    [+] ADD
+    </button>
+    {/* Mobile-only export/import buttons */}
+    <button
+    onClick={exportTasksJSON}
+    className="md:hidden px-3 py-2 font-mono text-xs border bg-gray-700 border-gray-600 text-gray-300"
+    title="Export"
+    >
+    EXP
+    </button>
+    <button
+    onClick={importTasksJSON}
+    className="md:hidden px-3 py-2 font-mono text-xs border bg-gray-700 border-gray-600 text-gray-300"
+    title="Import"
+    >
+    IMP
+    </button>
+    </div>
+    </div>
 
-        {/* ========== NEW TASK VIEW ========== */}
-        {selectedView === 'newTask' && (
-          <TaskCreationView
-            taskSubView={taskSubView}
-            setTaskSubView={setTaskSubView}
-            newTask={newTask}
-            setNewTask={setNewTask}
-            dateInput={dateInput}
-            setDateInput={setDateInput}
-            timeInput={timeInput}
-            setTimeInput={setTimeInput}
-            parseDateInput={parseDateInput}
-            parseTimeInput={parseTimeInput}
-            projects={projects}
-            taskCreationMonth={taskCreationMonth}
-            taskCreationDates={taskCreationDates}
-            prevTaskCreationMonth={prevTaskCreationMonth}
-            nextTaskCreationMonth={nextTaskCreationMonth}
-            selectTaskDate={selectTaskDate}
-            isToday={isToday}
-            getLocalDateString={getLocalDateString}
-            getDisplayMinute={getDisplayMinute}
-            clockMode={clockMode}
-            setClockMode={setClockMode}
-            overclock={overclock}
-            toggleOverclock={toggleOverclock}
-            overclockLocked={overclockLocked}
-            setOverclockLocked={setOverclockLocked}
-            selectHour={selectHour}
-            onClockHourComplete={onClockHourComplete}
-            selectMinute={selectMinute}
-            setMinuteOffset={setMinuteOffset}
-            selectAMPM={selectAMPM}
-            toggleUrgent={toggleUrgent}
-            toggleCarryOver={toggleCarryOver}
-            toggleRecurring={toggleRecurring}
-            updateRecurrenceInterval={updateRecurrenceInterval}
-            updateRecurrenceCount={updateRecurrenceCount}
-            getIntervalLabel={getIntervalLabel}
-            batchRows={batchRows}
-            addBatchRow={addBatchRow}
-            removeBatchRow={removeBatchRow}
-            duplicateBatchRow={duplicateBatchRow}
-            updateBatchRow={updateBatchRow}
-            addTask={addTask}
-            addBatchTasks={addBatchTasks}
-            goBackFromNewTask={goBackFromNewTask}
-            renderRecentTasksList={renderRecentTasksList}
-            renderActionButtons={renderActionButtons}
-            getRecurringDatesForMonth={getRecurringDatesForMonth}
-            getLastRecurringDate={getLastRecurringDate}
-            resetDate={resetDate}
-            resetTime={resetTime}
-          />
-        )}
+    {/* ========== NEW TASK VIEW ========== */}
+    {selectedView === 'newTask' && (
+      <TaskCreationView
+      taskSubView={taskSubView}
+      setTaskSubView={setTaskSubView}
+      newTask={newTask}
+      setNewTask={setNewTask}
+      dateInput={dateInput}
+      setDateInput={setDateInput}
+      timeInput={timeInput}
+      setTimeInput={setTimeInput}
+      parseDateInput={parseDateInput}
+      parseTimeInput={parseTimeInput}
+      projects={projects}
+      taskCreationMonth={taskCreationMonth}
+      taskCreationDates={taskCreationDates}
+      prevTaskCreationMonth={prevTaskCreationMonth}
+      nextTaskCreationMonth={nextTaskCreationMonth}
+      selectTaskDate={selectTaskDate}
+      isToday={isToday}
+      getLocalDateString={getLocalDateString}
+      getDisplayMinute={getDisplayMinute}
+      clockMode={clockMode}
+      setClockMode={setClockMode}
+      overclock={overclock}
+      toggleOverclock={toggleOverclock}
+      overclockLocked={overclockLocked}
+      setOverclockLocked={setOverclockLocked}
+      selectHour={selectHour}
+      onClockHourComplete={onClockHourComplete}
+      selectMinute={selectMinute}
+      setMinuteOffset={setMinuteOffset}
+      selectAMPM={selectAMPM}
+      toggleUrgent={toggleUrgent}
+      toggleCarryOver={toggleCarryOver}
+      toggleRecurring={toggleRecurring}
+      updateRecurrenceInterval={updateRecurrenceInterval}
+      updateRecurrenceCount={updateRecurrenceCount}
+      getIntervalLabel={getIntervalLabel}
+      batchRows={batchRows}
+      addBatchRow={addBatchRow}
+      removeBatchRow={removeBatchRow}
+      duplicateBatchRow={duplicateBatchRow}
+      updateBatchRow={updateBatchRow}
+      addTask={addTask}
+      addBatchTasks={addBatchTasks}
+      goBackFromNewTask={goBackFromNewTask}
+      renderRecentTasksList={renderRecentTasksList}
+      renderActionButtons={renderActionButtons}
+      getRecurringDatesForMonth={getRecurringDatesForMonth}
+      getLastRecurringDate={getLastRecurringDate}
+      resetDate={resetDate}
+      resetTime={resetTime}
+      />
+    )}
 
-        {/* ========== DASHBOARD VIEW ========== */}
-        {selectedView === 'dashboard' && (
-          <DashboardView
-            currentMonth={currentMonth}
-            calendarDates={calendarDates}
-            selectedDate={selectedDate}
-            setSelectedDate={setSelectedDate}
-            prevMonth={prevMonth}
-            nextMonth={nextMonth}
-            getCompletionStats={getCompletionStats}
-            isToday={isToday}
-            isSameDate={isSameDate}
-            getTasksForDate={getTasksForDate}
-            getTodayUrgentTasks={getTodayUrgentTasks}
-            tasks={tasks}
-            projects={projects}
-            toggleTask={toggleTask}
-            deleteTask={deleteTask}
-            addDependency={addDependency}
-            removeDependency={removeDependency}
-            updateTask={updateTask}
-            editingTask={editingTask}
-            startEditTask={startEditTask}
-            saveEditTask={saveEditTask}
-            setEditingTask={setEditingTask}
-            advancedEditTask={advancedEditTask}
-          />
-        )}
+    {/* ========== DASHBOARD VIEW ========== */}
+    {selectedView === 'dashboard' && (
+      <DashboardView
+      currentMonth={currentMonth}
+      calendarDates={calendarDates}
+      selectedDate={selectedDate}
+      setSelectedDate={setSelectedDate}
+      prevMonth={prevMonth}
+      nextMonth={nextMonth}
+      getCompletionStats={getCompletionStats}
+      isToday={isToday}
+      isSameDate={isSameDate}
+      getTasksForDate={getTasksForDate}
+      getTodayUrgentTasks={getTodayUrgentTasks}
+      tasks={tasks}
+      projects={projects}
+      toggleTask={toggleTask}
+      deleteTask={deleteTask}
+      addDependency={addDependency}
+      removeDependency={removeDependency}
+      updateTask={updateTask}
+      editingTask={editingTask}
+      startEditTask={startEditTask}
+      saveEditTask={saveEditTask}
+      setEditingTask={setEditingTask}
+      advancedEditTask={advancedEditTask}
+      />
+    )}
 
-        {/* ========== UNDATED VIEW ========== */}
-        {selectedView === 'undated' && (
-          <UndatedView
-            projects={projects}
-            undatedByProject={undatedByProject}
-            expandedProjects={expandedProjects}
-            toggleProjectExpansion={toggleProjectExpansion}
-            expandAll={expandAll}
-            collapseAll={collapseAll}
-            showAddProject={showAddProject}
-            setShowAddProject={setShowAddProject}
-            newProject={newProject}
-            setNewProject={setNewProject}
-            addProject={addProject}
-            setShowDeleteProjectConfirm={setShowDeleteProjectConfirm}
-            tasks={tasks}
-            toggleTask={toggleTask}
-            deleteTask={deleteTask}
-            addDependency={addDependency}
-            removeDependency={removeDependency}
-            updateTask={updateTask}
-            editingTask={editingTask}
-            startEditTask={startEditTask}
-            saveEditTask={saveEditTask}
-            setEditingTask={setEditingTask}
-            advancedEditTask={advancedEditTask}
-          />
-        )}
+    {/* ========== UNDATED VIEW ========== */}
+    {selectedView === 'undated' && (
+      <UndatedView
+      projects={projects}
+      undatedByProject={undatedByProject}
+      expandedProjects={expandedProjects}
+      toggleProjectExpansion={toggleProjectExpansion}
+      expandAll={expandAll}
+      collapseAll={collapseAll}
+      showAddProject={showAddProject}
+      setShowAddProject={setShowAddProject}
+      newProject={newProject}
+      setNewProject={setNewProject}
+      addProject={addProject}
+      setShowDeleteProjectConfirm={setShowDeleteProjectConfirm}
+      tasks={tasks}
+      toggleTask={toggleTask}
+      deleteTask={deleteTask}
+      addDependency={addDependency}
+      removeDependency={removeDependency}
+      updateTask={updateTask}
+      editingTask={editingTask}
+      startEditTask={startEditTask}
+      saveEditTask={saveEditTask}
+      setEditingTask={setEditingTask}
+      advancedEditTask={advancedEditTask}
+      />
+    )}
 
-        {/* Modals */}
-        {showDeleteProjectConfirm && (
-          <DeleteProjectModal
-            projectName={showDeleteProjectConfirm}
-            onDelete={deleteProject}
-            onCancel={() => setShowDeleteProjectConfirm(null)}
-          />
-        )}
+    {/* Modals */}
+    {showDeleteProjectConfirm && (
+      <DeleteProjectModal
+      projectName={showDeleteProjectConfirm}
+      onDelete={deleteProject}
+      onCancel={() => setShowDeleteProjectConfirm(null)}
+      />
+    )}
 
-        {deleteRecurringModal && (
-          <DeleteRecurringModal
-            taskId={deleteRecurringModal.taskId}
-            onDeleteInstance={(id) => performTaskDeletion(id, false, deleteRecurringModal.instanceDate)}
-            onDeleteAll={(id) => performTaskDeletion(id, true, null)}
-            onCancel={() => setDeleteRecurringModal(null)}
-          />
-        )}
-      </div>
+    {deleteRecurringModal && (
+      <DeleteRecurringModal
+      taskId={deleteRecurringModal.taskId}
+      onDeleteInstance={(id) => performTaskDeletion(id, false, deleteRecurringModal.instanceDate)}
+      onDeleteAll={(id) => performTaskDeletion(id, true, null)}
+      onCancel={() => setDeleteRecurringModal(null)}
+      />
+    )}
+    </div>
     </div>
   );
 };

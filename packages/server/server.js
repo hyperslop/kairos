@@ -118,12 +118,12 @@ app.put('/api/data', requireAuth, (req, res) => {
 
 // ─── Start ──────────────────────────────────────────────────────
 
-app.listen(PORT, '0.0.0.0', () => {
+app.listen(PORT, '10.100.0.1', () => {
   console.log('');
   console.log('╔══════════════════════════════════════════════╗');
   console.log('║  Kairos Sync Server                              ║');
   console.log('╠══════════════════════════════════════════════╣');
-  console.log(`║  URL:      http://0.0.0.0:${PORT}               ║`);
+  console.log(`║  URL:      http://10.100.0.1:${PORT}               ║`);
   console.log(`║  Data:     ${path.basename(DATA_FILE)}                       ║`);
   console.log(`║  Password: ${PASSWORD === 'changeme' ? 'changeme (⚠ default!)' : '••••••••'}          ║`);
   console.log('╠══════════════════════════════════════════════╣');
