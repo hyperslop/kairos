@@ -138,22 +138,42 @@ const TaskManager = () => {
       settings: { overclock, overclockLocked }
     };
     const fileName = `tasks-backup-${new Date().toISOString().split('T')[0]}.json`;
-    const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
+    const jsonString = JSON.stringify(exportData, null, 2);
 
-    // Try native share (works in Android WebView)
-    if (navigator.share) {
+    // Capacitor (Android): write to cache, then share via native share sheet
+    if (typeof window !== 'undefined' && window.Capacitor) {
       try {
-        const file = new File([blob], fileName, { type: 'application/json' });
-        if (navigator.canShare && navigator.canShare({ files: [file] })) {
-          await navigator.share({ files: [file], title: 'Kairos Backup' });
-          return;
-        }
+        // Dynamic imports to avoid breaking non-Capacitor builds
+        const fsPkg = ['@capacitor', 'filesystem'].join('/');
+        const sharePkg = ['@capacitor', 'share'].join('/');
+        const fsMod = await new Function('p', 'return import(p)')(fsPkg);
+        const shareMod = await new Function('p', 'return import(p)')(sharePkg);
+        const { Filesystem, Directory } = fsMod;
+        const { Share } = shareMod;
+
+        // Write to cache directory
+        const result = await Filesystem.writeFile({
+          path: fileName,
+          data: jsonString,
+          directory: Directory.Cache,
+          encoding: 'utf8'
+        });
+
+        // Share the file (opens native picker to save/send)
+        await Share.share({
+          title: 'Kairos Backup',
+          url: result.uri,
+          dialogTitle: 'Save Kairos Backup'
+        });
+        return;
       } catch (err) {
-        if (err.name === 'AbortError') return; // user cancelled
+        if (err.name === 'AbortError') return;
+        console.warn('Capacitor export failed, trying fallback:', err);
       }
     }
 
-    // Fallback: <a download> (works on desktop browsers)
+    // Fallback: <a download> (works on desktop browsers / Electron)
+    const blob = new Blob([jsonString], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
